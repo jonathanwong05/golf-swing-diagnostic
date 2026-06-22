@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+data/raw/
+data/processed/
+notebooks/*.ipynb_checkpoints/
+notebooks/**/output/
+*.mp4
+*.mov
+*.MOV
+*.MP4
+
+# Keep sample videos
+!data/samples/*.mp4
+!data/samples/*.mov
+
+# Secrets
+.env
+*.key
+
+# Build artifacts
+build/
+dist/
+*.egg-info/

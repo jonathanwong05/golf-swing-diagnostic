@@ -1,0 +1,26 @@
+# Core
+numpy>=1.26
+scipy>=1.11
+
+# Computer vision
+opencv-python>=4.9
+mediapipe>=0.10
+
+# Web framework
+fastapi>=0.109
+uvicorn>=0.27
+python-multipart>=0.0.9  # for file uploads
+
+# Data validation
+pydantic>=2.5
+
+# KB
+pyyaml>=6.0
+
+# LLM
+anthropic>=0.18
+
+# Development
+pytest>=8.0
+jupyter>=1.0
+matplotlib>=3.8  # for visualization
