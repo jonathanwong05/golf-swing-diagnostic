@@ -4,7 +4,7 @@ scipy>=1.11
 
 # Computer vision
 opencv-python>=4.9
-mediapipe>=0.10
+mediapipe==0.10.14
 
 # Web framework
 fastapi>=0.109
