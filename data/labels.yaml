@@ -1,0 +1,308 @@
+# Swing dataset labels. Each entry describes the intent of one swing
+# clip so the validation script can check feature outputs against
+# expected patterns.
+#
+# All fault_demo entries isolate a single CAUSE — a specific
+# mechanical pattern in the swing. Symptoms (slice, hook, pull, push,
+# fat, thin) are not directly demonstrated; they emerge from the
+# combination of causes plus face-to-path geometry. Validating that
+# features detect causes in isolation is sufficient to validate that
+# the system can identify those causes when they appear in
+# combination in real swings.
+#
+# Schema:
+#   type: "normal" | "fault_demo"
+#   intended_fault: short_snake_case_name  (fault_demo only)
+#   deferred: true                         (fault_demo only, optional)
+#     Skip validation entirely. Used for demos whose expected
+#     features depend on capabilities not built in v1 (e.g., ball
+#     detection).
+#   expected_features:                     (fault_demo only)
+#     <feature_name>:
+#       direction: high | low
+#         High = value expected above the normal-swing baseline mean.
+#         Low  = value expected below the normal-swing baseline mean.
+#         Direction is signed relative to baseline mean, not relative
+#         to zero, so it works for rotation proxies (baseline
+#         negative) and wrist angles (baseline near zero) uniformly.
+#       known_weak: true                   (optional; default false)
+#         Feature is known to be intrinsically weak for this fault —
+#         e.g., motion-noisy, high baseline CV, or documented as a
+#         weak-confidence indicator in phase2_notes. If the check
+#         fails on this feature, the script reports it but does NOT
+#         fail the run. Do NOT set known_weak just because a specific
+#         demo underperformed — that hides real regressions.
+#   notes: free text describing the swing or filming conditions
+
+
+# --- normal swings ---
+
+swing_01:
+  type: normal
+  notes: "First test clip; filmed at 27.5 fps."
+
+swing_02:
+  type: normal
+  notes: "Filmed at 60 fps."
+
+swing_03:
+  type: normal
+  notes: "Filmed at 27 fps."
+
+swing_04:
+  type: normal
+  notes: "Filmed at 30 fps."
+
+swing_05:
+  type: normal
+  notes: "Filmed at 26 fps."
+
+swing_06:
+  type: normal
+  notes: "Filmed at 30 fps."
+
+swing_07:
+  type: normal
+  notes: "Filmed at 28 fps."
+
+swing_08:
+  type: normal
+  notes: "Filmed at 26 fps."
+
+swing_09:
+  type: normal
+  notes: |
+    Visibly cupped lead wrist; used in initial wrist-angle inspection
+    as an unintentional cupping example. Useful as a real-world
+    (non-exaggerated) reference for the cupped pattern.
+
+swing_10:
+  type: normal
+  notes: "Filmed at 86 fps."
+
+swing_11:
+  type: normal
+  notes: "Filmed at 120 fps."
+
+swing_12:
+  type: normal
+  notes: "Filmed at 60 fps."
+
+swing_13:
+  type: normal
+  notes: "Filmed at 60 fps."
+
+swing_14:
+  type: normal
+  notes: "Filmed at 60 fps."
+
+swing_15:
+  type: normal
+  notes: |
+    Best-strike swing from the normal dataset; close to neutral wrist
+    at impact. Used as the clean-strike reference in initial wrist
+    inspection.
+
+
+# --- fault demos: WRIST CAUSES ---
+
+swing_16:
+  type: fault_demo
+  intended_fault: cupped_lead_wrist_at_top
+  expected_features:
+    trail_wrist_angle_at_P4:
+      direction: high                # primary (visibility rule)
+    lead_wrist_angle_at_P4:
+      direction: high                # corroborating
+    trail_wrist_angle_at_P7:
+      direction: high
+      known_weak: true               # P7 wrist motion-noisy at 60fps
+    lead_wrist_angle_at_P7:
+      direction: high
+      known_weak: true
+  notes: |
+    Exaggerated cup at the top. Feel was back of lead hand pointing
+    straight at the sky. Held the cup through impact.
+
+swing_17:
+  type: fault_demo
+  intended_fault: bowed_lead_wrist_at_top
+  expected_features:
+    trail_wrist_angle_at_P4:
+      direction: low
+    lead_wrist_angle_at_P4:
+      direction: low
+    trail_wrist_angle_at_P7:
+      direction: low
+      known_weak: true               # P7 wrist motion-noisy at 60fps
+    lead_wrist_angle_at_P7:
+      direction: low
+      known_weak: true
+  notes: |
+    Exaggerated bow at the top. Feel was hiding the clubface from the
+    sky; lead palm facing up.
+
+swing_18:
+  type: fault_demo
+  intended_fault: scoop_at_impact
+  expected_features:
+    trail_wrist_angle_at_P7:
+      direction: high
+      known_weak: true               # P7 wrist motion-noisy at 60fps
+    lead_wrist_angle_at_P7:
+      direction: high
+      known_weak: true
+  notes: |
+    Scoop / flip through impact. Feel was trying to lift the ball,
+    adding loft with the hands at the moment of contact.
+
+swing_19:
+  type: fault_demo
+  intended_fault: hold_off_bowed_at_impact
+  expected_features:
+    trail_wrist_angle_at_P7:
+      direction: low
+      known_weak: true               # P7 wrist motion-noisy at 60fps
+    lead_wrist_angle_at_P7:
+      direction: low
+      known_weak: true
+  notes: |
+    Hold-off / hooded face through impact. Feel was bowed lead wrist
+    held through the strike, like a punch shot.
+
+
+# --- fault demos: PATH CAUSES ---
+
+swing_20:
+  type: fault_demo
+  intended_fault: over_the_top
+  expected_features:
+    # NOTE: trail_elbow_position_at_P4_to_P7 will be the primary
+    # over-the-top indicator once the derived-features layer is
+    # built. Until then, shoulder rotation at P7 (open at impact) is
+    # the best current-schema indicator.
+    shoulder_rotation_proxy_at_P7:
+      direction: high                # values less negative / positive = open
+  notes: |
+    Over-the-top swing. Feel was throwing the arms out from the top
+    and swinging across the body left-to-right.
+
+swing_21:
+  type: fault_demo
+  intended_fault: stuck_inside
+  deferred: true
+  notes: |
+    No current-schema primary indicator; trail_elbow_position_at_P4_to_P7
+    will be primary once built. hip_rotation_proxy_at_P7 was listed
+    initially but direction depends on which stuck-mechanism the
+    amateur uses (hips-outracing-arms vs holding-hips-and-dropping-elbow).
+    Validation deferred until the trail-elbow feature is built.
+
+
+# --- fault demos: LOW-POINT AND WEIGHT-SHIFT CAUSES ---
+
+swing_22:
+  type: fault_demo
+  intended_fault: hanging_back
+  expected_features:
+    head_displacement_P1_to_P7_target_axis:
+      direction: low                 # negative = head moved away from target
+  notes: |
+    Hanging back through impact. Feel was keeping weight on the trail
+    foot through the strike; head stayed behind the ball.
+    (Weight distribution proxy was dropped from v1 — target-axis
+    head displacement is the v1 primary indicator.)
+
+swing_23:
+  type: fault_demo
+  intended_fault: early_extension
+  expected_features:
+    spine_angle_change_P1_to_P7:
+      direction: low
+  notes: |
+    Early extension. Feel was thrusting the hips toward the ball
+    during the downswing and standing up through impact. Note this
+    demo is hip-driven not spine-dominant per phase2_notes, so
+    spine_angle_change_P1_to_P7 may come in weakly. hip_vertical_change
+    was previously listed but is rotation-confounded and documented
+    as corroborating-only in phase2_notes; removed to prevent false
+    FAILs from rotation-drift artifacts.
+
+swing_24:
+  type: fault_demo
+  intended_fault: reverse_pivot
+  expected_features:
+    head_displacement_P1_to_P4:
+      direction: high                # positive = head moved toward target at top
+      known_weak: true               # feature is documented as weak; fires only on extreme cases
+  notes: |
+    Reverse pivot. Feel was weight moving to the lead foot during
+    the backswing and head drifting toward the target at the top.
+    (Weight distribution proxy was dropped from v1 — head
+    displacement is the v1 fallback but is documented as weak.)
+
+
+# --- fault demos: ROTATION AND TEMPO CAUSES ---
+
+swing_25:
+  type: fault_demo
+  intended_fault: short_backswing
+  expected_features:
+    shoulder_rotation_proxy_at_P4:
+      direction: high                # less negative = under-rotated
+    hip_rotation_proxy_at_P4:
+      direction: high                # less negative = under-rotated
+  notes: |
+    Half-swing backswing; deliberately insufficient turn. Feel was
+    stopping the backswing well short of full rotation.
+
+swing_26:
+  type: fault_demo
+  intended_fault: slow_tempo
+  expected_features:
+    total_swing_duration:
+      direction: high                # long swing
+  notes: |
+    Deliberately slow throughout. Feel was sluggish, lethargic pace
+    on both backswing and downswing. tempo_ratio may or may not
+    move — depends on whether both halves slow proportionally.
+
+swing_27:
+  type: fault_demo
+  intended_fault: rushed_transition
+  expected_features:
+    tempo_ratio:
+      direction: low                 # rushed downswing lowers ratio
+  notes: |
+    Quick / rushed transition. Feel was short pause at the top with
+    a fast snap into the downswing.
+
+
+# --- fault demos: SETUP CAUSES ---
+
+swing_28:
+  type: fault_demo
+  intended_fault: standing_too_close
+  expected_features:
+    hand_distance_from_body_at_P1:
+      direction: low
+      known_weak: true               # 19% baseline CV; feature needs conservative thresholds
+  notes: |
+    Address position with hands hanging unusually close to the
+    thighs. Otherwise normal swing.
+
+swing_29:
+  type: fault_demo
+  intended_fault: ball_position_too_far_forward
+  deferred: true
+  notes: |
+    Ball position causes deferred to v2 (requires ball detection).
+    No v1 feature can validate this demo. Kept in dataset for future
+    use when ball detection is added.
+
+swing_30:
+  type: fault_demo
+  intended_fault: ball_position_too_far_back
+  deferred: true
+  notes: |
+    Same as swing_29, mirror direction. Deferred to v2.

@@ -1,3 +1,39 @@
+> **Phase 2 update: this document is preserved as historical research.**
+>
+> This is the working document from Phase 0/1 that captured the
+> original cause research for the v1 KB. Several causes described
+> below have since been dropped from the v1 implementation because
+> Phase 2 empirical testing confirmed their primary indicators
+> cannot be measured reliably from down-the-line 2D pose (the
+> "invisible axis" principle — see `docs/measurement_visibility_decisions.md`).
+>
+> **Causes dropped from v1** (kept in this document as v2 candidates):
+> - Slice cause 3 (weak grip) — depended on `lead_hand_knuckle_visibility_at_P1`
+> - Hook cause 3 (strong grip) — depended on `lead_hand_knuckle_visibility_at_P1`
+> - Pull cause 2 (aim left) — depended on `shoulder_line_at_P1`, `hip_line_at_P1`
+> - Push cause 3 (aim right) — depended on `shoulder_line_at_P1`, `hip_line_at_P1`
+> - Lack-of-distance cause 5 (no ground use) — depended on `weight_distribution_proxy_at_{P4, P7}`
+> - Pull cause 3 (ball position too far forward) — depended on ball detection (deferred to v2)
+> - Push cause 4 (ball position too far back) — depended on ball detection (deferred to v2)
+> - Thin cause 5 (ball position too far forward) — depended on ball detection (deferred to v2)
+>
+> **Causes with swapped primary indicators in v1:**
+> - Slice cause 4 / Push cause 2 / Fat cause 2 / Thin cause 1 / Shank cause 1 (early extension): primary changed from `hip_vertical_change_P1_to_P7` (rotation-confounded) to `spine_angle_change_P1_to_P7` (delta-based, clean)
+> - Slice cause 5 / Fat cause 4 (reverse pivot): primary changed from `weight_distribution_proxy_at_P4` (dropped) to `head_displacement_P1_to_P4` (weak fallback)
+> - Push cause 5 / Fat cause 1 / Thin cause 4 partial (hanging back): primary changed from `weight_distribution_proxy_at_P7` (dropped) to `head_displacement_P1_to_P7_target_axis` (validated)
+>
+> **Wrist measurement primary side (v1):** trail-side is primary for
+> down-the-line view; lead-side is corroborating only. Applies to all
+> wrist-based causes. See `docs/measurement_visibility_decisions.md`.
+>
+> The body text below is preserved as originally written for research
+> traceability and to inform v2 planning if face-on view or club
+> tracking is added. For the authoritative v1 KB indicator list, see
+> `docs/causes_catalog.md`. For feature-level detail, see
+> `docs/features_inventory.md`.
+
+---
+
 Working document for v1 KB design. Each symptom section captures:
 - Physical framing (what's actually happening)
 - Candidate causes with indicator features and checkpoints
