@@ -1,0 +1,162 @@
+# kb/lack_of_distance.yaml
+#
+# Symptom: ball struck cleanly but doesn't travel as far as it should
+# for the club used. Fundamentally a clubhead-speed problem, diagnosed
+# by negative inference from patterns that prevent speed.
+# Five causes in v1 (no-ground-use dropped — see causes_catalog.md).
+
+- cause_id: insufficient_body_rotation
+  category: swing
+  confidence: validated
+  description: "Backswing rotation is significantly reduced, leaving no room to build up range of motion the body can accelerate the club through."
+  indicators:
+    - feature: hip_rotation_proxy_at_P4
+      mode: zscore
+      operator: gt
+      threshold: 3.0              
+      confidence_weight: 1.0
+      reasoning: "Primary indicator. Baseline mean -0.398, stddev 0.017 (tight 4% CV). Threshold at 3σ above baseline — 2σ threshold surfaced swing_01 (a baseline member at 2.24σ) as false positive; 3σ preserves clean separation while still catching validated demo. swing_25 short_backswing demo z=+4.44."
+    - feature: shoulder_rotation_proxy_at_P4
+      mode: zscore
+      operator: gt
+      threshold: 3.0               
+      confidence_weight: 0.5
+      reasoning: "Corroborating. Baseline mean -0.702, stddev 0.035 (5% CV). Same tight-CV rationale as primary; 3σ threshold preserves separation from baseline tail. swing_25 demo z=+3.37 clears 3.0 threshold."
+  fix:
+    technical_instruction: "Complete a full backswing turn: shoulders should rotate around 90° from address and hips around 45°. The lead shoulder should finish under your chin at the top."
+  feels:
+    - feel: "Feel like you're turning your back to the target at the top of the backswing"
+      best_for: "players who feel restricted or short at the top"
+      why_it_works: "Uses the back's orientation as a body-relative rotation cue that's easier to sense than 'shoulder angle in degrees.'"
+    - feel: "Feel like your lead shoulder passes under your chin on the way to the top"
+      best_for: "players with obvious short backswings"
+      why_it_works: "Anchors rotation to a specific body-part destination, giving a clear stop condition that's fuller than their current top."
+  drills:
+    - name: "Full turn drill against a wall"
+      youtube_url: ""
+
+- cause_id: arms_dominant_downswing
+  category: swing
+  confidence: plausible
+  description: "Upper body initiates the downswing rather than the hips; kinetic chain is broken and the player swings with arm strength alone."
+  indicators:
+    - feature: hip_rotation_proxy_at_P7
+      mode: zscore
+      operator: lt
+      threshold: -1.5
+      confidence_weight: 0.4
+      reasoning: "Hips didn't lead into impact — still more negative than baseline. Baseline mean -0.178, stddev 0.057 (32% CV). Weight below fallback floor — needs shoulder indicator firing together to diagnose."
+    - feature: shoulder_rotation_proxy_at_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.4
+      reasoning: "Shoulders opened past baseline at impact — upper body raced ahead. Same feature as slice over_the_top; 59% baseline CV. Weight below fallback floor."
+  fix:
+    technical_instruction: "Start the downswing from the ground up — feel a small weight shift into the lead foot before the arms move. Hips lead, shoulders follow, arms come last."
+  feels:
+    - feel: "Feel like you step into your lead foot at the top of the backswing before the arms come down"
+      best_for: "players whose downswing initiates from the arms or shoulders"
+      why_it_works: "Physically forces the lower body to move first by giving it a specific initiating action."
+    - feel: "Feel like the trail heel comes off the ground as the arms drop into the slot"
+      best_for: "players who understand the kinetic chain intellectually but can't feel it"
+      why_it_works: "The heel-off cue is a downstream marker of good hip rotation — chase the marker and the sequence tends to follow."
+  drills:
+    - name: "Step-through drill for sequencing"
+      youtube_url: ""
+
+- cause_id: casting_early_release
+  category: swing
+  confidence: plausible
+  description: "Wrist angle between lead arm and club is released too early in the downswing; stored power is spent before impact."
+  indicators:
+    - feature: lead_wrist_angle_at_P5_proxy
+      mode: raw
+      operator: lt
+      threshold: 15.0
+      confidence_weight: 0.4       
+      reasoning: "Primary; lead-side is less noisy at P5 than trail-side (opposite of P4/P7 rule) per phase2_notes. Baseline mean 33.6°, stddev 12.7°. Weight below fallback floor — no casting fault demo exists in dataset (phase2_notes), so cannot justify diagnosing on this indicator alone. Cause requires corroborating trail-side firing (weight 0.3) to clear floor at 0.7."
+    - feature: trail_wrist_angle_at_P5_proxy
+      mode: raw
+      operator: gt
+      threshold: 15.0
+      confidence_weight: 0.3
+      reasoning: "Corroborating; extended trail wrist at P5 = released. Baseline mean -5.1°, stddev 20.0° (motion-noisy at mid-downswing per phase2_notes)."
+  fix:
+    technical_instruction: "Maintain wrist hinge deeper into the downswing. Feel the club handle leading the clubhead all the way until just before impact, then let the natural release happen at the ball."
+  feels:
+    - feel: "Feel like your trail elbow reaches your trail side pocket before your wrists start to release"
+      best_for: "players who throw the club from the top"
+      why_it_works: "Gives a physical landmark for when the release starts, later than the current pattern."
+    - feel: "Feel like you're pulling the handle down toward the ball with the clubhead trailing behind"
+      best_for: "players who understand shaft lean as a concept"
+      why_it_works: "Reframes the downswing as a pulling motion, which naturally preserves wrist hinge."
+  drills:
+    - name: "Pump drill for late release"
+      youtube_url: ""
+
+- cause_id: wrong_tempo
+  category: swing
+  confidence: plausible
+  description: "Swing tempo is too slow overall or has a rushed transition; neither pattern generates efficient clubhead speed."
+  indicators:
+    - feature: total_swing_duration
+      mode: raw
+      operator: gt
+      threshold: 2.5
+      confidence_weight: 0.5
+      reasoning: "Long total swing time. Baseline mean 1.45s, stddev 0.335s. Threshold ~1.6σ above baseline. Downgraded from validated to plausible per phase2_notes — slow-tempo demo (swing_26) failed to produce a slow swing."
+    - feature: tempo_ratio
+      mode: raw
+      operator: lt
+      threshold: 1.3
+      confidence_weight: 0.5
+      reasoning: "Rushed transition (downswing too close in time to backswing). Baseline mean 2.01, stddev 0.35. Threshold ~2σ below baseline."
+    - feature: tempo_ratio
+      mode: raw
+      operator: gt
+      threshold: 3.0
+      confidence_weight: 0.5
+      reasoning: "Overly dragged backswing relative to downswing. Baseline mean 2.01, stddev 0.35. Threshold ~2.8σ above baseline; catches only clearly abnormal ratios."
+  fix:
+    technical_instruction: "Establish a smooth backswing-to-downswing ratio around 3:1 (a moment of pause at the top). Neither the backswing nor the transition should feel rushed."
+  feels:
+    - feel: "Feel like you count '1... 2, 3' — one long beat on the backswing, then quick two-and-three on the downswing and through"
+      best_for: "players who rush the transition"
+      why_it_works: "Externalizes the rhythm into an audible count, breaking the reactive pattern of firing immediately from the top."
+    - feel: "Feel like your backswing takes twice as long as your downswing"
+      best_for: "players with fast or inconsistent tempo"
+      why_it_works: "Gives a proportional rather than absolute cue, adapting naturally to any base tempo the player has."
+  drills:
+    - name: "Metronome tempo drill"
+      youtube_url: ""
+
+- cause_id: collapsed_swing_radius
+  category: swing
+  confidence: plausible
+  description: "Lead arm bends significantly at the top or through impact, shortening the swing radius that multiplies clubhead speed."
+  indicators:
+    - feature: lead_elbow_angle_at_P4
+      mode: raw
+      operator: lt
+      threshold: 155.0
+      confidence_weight: 0.4      
+      reasoning: "Bent lead arm at top. Baseline mean 169.3°, stddev 5.7°. Threshold ~2.5σ below baseline. Weight below fallback floor — no fault demo, and swing_10 came in at z=-2.9 in normal baseline (may reflect real radius variation in Jonathan's swings). Cause requires P7 arm indicator firing together to clear floor at 0.8."
+    - feature: lead_arm_angle_at_P7
+      mode: raw
+      operator: lt
+      threshold: 160.0
+      confidence_weight: 0.4
+      reasoning: "Chicken-winging through impact. Baseline mean 172.8°, stddev 10.1°. Threshold ~1.3σ below baseline."
+  fix:
+    technical_instruction: "Keep the lead arm extended (not locked) throughout the backswing and through impact. Feel a wide, connected arc rather than a bent, folding one."
+  feels:
+    - feel: "Feel like your lead arm reaches for the sky at the top and reaches past the ball at impact"
+      best_for: "players whose lead arm visibly bends"
+      why_it_works: "Uses reaching as a natural extension cue; players naturally extend when reaching for a target."
+    - feel: "Feel like your lead armpit stays connected to your chest all the way to the finish"
+      best_for: "players whose lead arm collapses inward through impact (chicken-wing)"
+      why_it_works: "Connection cue prevents the elbow from breaking down independently of the body."
+  drills:
+    - name: "Towel under lead armpit drill"
+      youtube_url: ""

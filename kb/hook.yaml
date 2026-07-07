@@ -1,0 +1,133 @@
+# kb/hook.yaml
+#
+# Symptom: ball curves hard left for a right-handed golfer.
+# Root cause is a closed clubface relative to swing path at impact.
+# Four causes in v1 (strong grip dropped — see causes_catalog.md).
+# Hook causes are not just slice mirrors — different cause
+# distribution (skilled overcorrectors, body-stall players).
+
+# Audit notes (Phase 3):
+# - swing_06 (normal, clean overlay) fires body_stall_with_hand_flip
+#   at score 1.10 (hip_rotation_change z=-2, lead_arm_at_P7 z=-3).
+#   Real measurement anomaly; likely genuine mild body-stall in a
+#   non-fault-demo swing. Left as documented FP.
+
+- cause_id: bowed_lead_wrist_at_top
+  category: swing
+  confidence: validated
+  description: "Clubface is closed at impact due to a bowed lead wrist / flexed trail wrist at the top of the backswing that carries into impact."
+  indicators:
+    - feature: trail_wrist_angle_at_P4
+      mode: raw
+      operator: lt
+      threshold: -20.0
+      confidence_weight: 1.0
+      reasoning: "Primary indicator; mirror of slice cause 1. Baseline mean 6.4°, stddev 15.75°. Threshold ~1.7σ below baseline. Note: swing_17 demo came in at ~0° (Category B demo-execution issue documented in phase2_notes — Jonathan's natural cupping makes bow demos hard to execute); real well-bowed swings clear this threshold."
+    - feature: trail_wrist_angle_at_P7
+      mode: raw
+      operator: lt
+      threshold: -10.0
+      confidence_weight: 0.4
+      reasoning: "Corroborating; P7 wrist is motion-noisy at 60fps. Baseline mean 1.2°, stddev 5.6°."
+    - feature: lead_wrist_angle_at_P4
+      mode: raw
+      operator: lt
+      threshold: 0.0
+      confidence_weight: 0.4
+      reasoning: "Corroborating; lead-side visibility limited from down-the-line. Baseline mean 27.6°, stddev 16.4°."
+  fix:
+    technical_instruction: "Ease the lead wrist bow at the top so the clubface is square rather than closed at P4, then let the natural release open the face back to square through impact rather than continuing to hold the bow."
+  feels:
+    - feel: "Feel like the back of your lead hand faces the sky at the top rather than pointing behind you"
+      best_for: "players with visibly bowed wrist who've overcorrected from a slice"
+      why_it_works: "Reframes wrist position toward a neutral or slightly cupped feel; since the actual movement is small, the exaggerated cup-ish feel produces a square position."
+    - feel: "Feel like you're showing the clubface to the sky at the top"
+      best_for: "players who think in terms of clubface orientation"
+      why_it_works: "Direct clubface reframing; opens what was closed by targeting the visual result rather than the wrist mechanic."
+  drills:
+    - name: "Neutral wrist at top drill"
+      youtube_url: ""
+
+- cause_id: stuck_in_to_out_path
+  category: swing
+  confidence: plausible
+  description: "Downswing gets stuck with the trail elbow dropping too far behind the body while hips over-rotate; hands flip closed to compensate."
+  indicators:
+    - feature: hip_rotation_proxy_at_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.4
+      reasoning: "Stopgap while trail_elbow_position_at_P4_to_P7 is not built. Weight intentionally below fallback floor — hips being more open than baseline at impact is a weak isolated signal (direction depends on stuck-mechanism per phase2_notes on swing_21). Diagnosable once trail-elbow feature is added."
+  fix:
+    technical_instruction: "Sync the arms and hips through the downswing so the trail elbow stays in front of the trail hip rather than dropping behind it. Feel the chest and arms rotating together through impact."
+  feels:
+    - feel: "Feel like your trail elbow stays in front of your body all the way to impact"
+      best_for: "players who feel their arms lagging behind their hips"
+      why_it_works: "Gives the trail elbow a physical destination that prevents it from dropping behind — a positional cue rather than a timing cue."
+    - feel: "Feel like your chest points at the ball a fraction longer through impact"
+      best_for: "players whose hips outrace the upper body"
+      why_it_works: "Slows torso rotation to keep hip-shoulder relationship coordinated instead of hips over-rotating past the arms."
+  drills:
+    - name: "Trail elbow connection drill"
+      youtube_url: ""
+
+- cause_id: body_stall_with_hand_flip
+  category: swing
+  confidence: plausible
+  description: "Hip rotation slows or stops between impact and finish; hands and arms take over and flip the face closed through the strike."
+  indicators:
+    - feature: hip_rotation_change_P7_to_P10
+      mode: zscore
+      operator: lt
+      threshold: -1.5
+      confidence_weight: 0.7
+      reasoning: "Primary. Baseline mean 0.62, stddev 0.05 (tight CV ~8%). Threshold ~1.5σ below baseline catches meaningful stall. No fault demo to validate — see phase2_notes."
+    - feature: lead_arm_angle_at_P7
+      mode: raw
+      operator: lt
+      threshold: 163.0
+      confidence_weight: 0.4
+      reasoning: "Corroborating (lead arm collapsing at impact). Baseline mean 172.8°, stddev 10.1°."
+  fix:
+    technical_instruction: "Keep rotating the hips and torso through impact all the way to the finish position. The arms and hands should feel passive while the body drives the swing."
+  feels:
+    - feel: "Feel like your belt buckle keeps rotating toward the target all the way past impact"
+      best_for: "players whose lower body stalls at or before impact"
+      why_it_works: "Gives the pelvis a continuous rotation cue rather than a fire-and-hold cue, preventing the stop that lets hands take over."
+    - feel: "Feel like your chest finishes facing left of the target (for right-handed golfers)"
+      best_for: "players who hit the ball with their body already square to the target"
+      why_it_works: "Extends the rotation goal past impact, so impact itself happens while the body is still rotating rather than at the end of rotation."
+  drills:
+    - name: "Rotate through impact drill"
+      youtube_url: ""
+
+- cause_id: trail_hand_overactive_at_impact
+  category: swing
+  confidence: weak
+  description: "Trail wrist breaks down or over-flexes through impact, flipping the face closed late in the swing."
+  indicators:
+    - feature: trail_wrist_angle_at_P7
+      mode: raw
+      operator: lt
+      threshold: -10.0
+      confidence_weight: 0.4
+      reasoning: "Weak; P7 wrist is motion-noisy at 60fps (documented in phase2_notes as unfixable at 60fps — v2 recommends 120+fps). Weight below fallback floor — this cause hits the 'no clear cause' fallback frequently in v1, correct behavior."
+    - feature: lead_wrist_angle_at_P7
+      mode: raw
+      operator: gt
+      threshold: 10.0
+      confidence_weight: 0.4
+      reasoning: "Corroborating (cupped lead wrist = flip signature). Baseline mean -6.2°, stddev 12.2°. Also P7-wrist motion-noisy."
+  fix:
+    technical_instruction: "Quiet the trail hand through impact. Feel the body rotation dominates the strike while the trail hand does nothing active."
+  feels:
+    - feel: "Feel like your trail palm faces the sky through impact rather than turning down"
+      best_for: "players who feel their trail hand rolling over aggressively"
+      why_it_works: "Blocks the release rotation that closes the face; the actual motion needed is small but the exaggerated hold-off produces neutral."
+    - feel: "Feel like the trail hand is just along for the ride, only the body is hitting the ball"
+      best_for: "players who describe an active or flippy trail hand"
+      why_it_works: "Reframes the hand as passive rather than as a driver of the strike, quieting the flip."
+  drills:
+    - name: "Split-grip drill for trail-hand release"
+      youtube_url: ""

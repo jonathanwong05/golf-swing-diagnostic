@@ -1,0 +1,131 @@
+# kb/shank.yaml
+#
+# Symptom: ball is struck by the hosel rather than the face, squirting
+# hard right at near 90° to target. Geometric cause: hosel too close
+# to ball at impact — either clubhead moved toward player, or player
+# moved toward ball, or both. Often sudden-onset with a psychological
+# feedback loop.
+#
+# Four causes in v1: original cause 4 (diving into ball) merged with
+# cause 1 (early extension) per causes_catalog note that it's
+# "likely diagnosed as early extension's cousin." The same head-vertical
+# indicator is used as corroborator in early_extension, so keeping
+# a separate cause is redundant per the pruning rule.
+#
+# Per causes_catalog: shank has psychological/tension component that
+# the tool cannot measure; LLM output in Phase 4 should briefly
+# acknowledge this alongside mechanical diagnosis.
+
+- cause_id: early_extension
+  category: swing
+  confidence: plausible
+  description: "Hips thrust toward the ball in the downswing and the spine straightens; the entire club moves toward the ball with the body, bringing the hosel to the ball. The single most common amateur cause of shanks."
+  indicators:
+    - feature: spine_angle_change_P1_to_P7
+      mode: zscore
+      operator: lt
+      threshold: -1.5
+      confidence_weight: 0.7
+      reasoning: "Primary. Same feature/threshold/weight as slice cause 4, pull cause 2, push cause 2, fat cause 2, thin cause 1 per causes_catalog consistency rule (5-symptom shared cause). Per causes_catalog: expected to be the most common shank diagnosis in v1 because early extension is genuinely the most common shank cause AND the most reliably measurable of shank causes."
+    - feature: hip_vertical_change_P1_to_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.3
+      reasoning: "Corroborating only per phase2_notes (rotation-confounded). Same as slice cause 4."
+  fix:
+    technical_instruction: "Maintain your spine angle from address through impact. Hips should rotate around the spine, not thrust toward the ball. Keep your rear against an imaginary wall behind you through the strike."
+  feels:
+    - feel: "Feel like you're sitting into your trail hip at the top and posting up on your lead leg through impact, keeping your rear against an imaginary wall behind you"
+      best_for: "players whose hips visibly thrust toward the ball"
+      why_it_works: "Anchors the pelvis to a fixed reference (the wall), preventing forward thrust while allowing rotation. Same feel as early extension in other symptoms — the mechanic is identical, only the symptom differs."
+    - feel: "Feel like your belt buckle stays exactly the same distance from the ball from address to impact"
+      best_for: "players who understand the geometric cause of shanks"
+      why_it_works: "Directly targets the 'body moves toward ball' pattern that brings the hosel to the ball, framed as a distance-maintenance cue rather than a posture cue."
+  drills:
+    - name: "Chair drill for early extension"
+      youtube_url: ""
+
+- cause_id: standing_too_close
+  category: setup
+  confidence: plausible
+  description: "Address position with hands and club too close to the body. There's less margin for any in-swing drift before the hosel finds the ball — a swing that would produce clean strike from normal distance produces a shank from too close."
+  indicators:
+    - feature: hand_distance_from_body_at_P1
+      mode: raw
+      operator: lt
+      threshold: 0.35
+      confidence_weight: 0.5
+      reasoning: "Setup cause. Baseline mean 0.487, stddev 0.093 (19% CV per phase2_notes). Threshold ~1.6σ below baseline for genuinely extreme setup. swing_28 standing_too_close demo underperformed at 0.464 (5% below baseline; labels.yaml marks known_weak) — threshold set to catch clearly extreme cases only, real users with pronounced too-close setup will fire this."
+  fix:
+    technical_instruction: "Set up with your hands hanging comfortably away from your body — a fist-width to a fist-and-thumb width between the club grip and your thighs is typical for iron shots. Check ball position relative to club face, not to your feet."
+  feels:
+    - feel: "Feel like your hands hang naturally below your shoulders at address, with a slight bend in your elbows to give room"
+      best_for: "players who set up with hands hovering close to their thighs"
+      why_it_works: "Uses shoulder-to-hand vertical alignment as a natural reference for how far hands should be from body, without requiring measurement."
+    - feel: "Feel like you can see a full fist-width of space between the grip end and your lead thigh"
+      best_for: "players who understand setup positions visually"
+      why_it_works: "External spatial reference (fist width) gives a concrete distance target that's easier to check than 'comfortable' or 'natural.'"
+  drills:
+    - name: "Grip-clearance drill at address"
+      youtube_url: ""
+
+- cause_id: out_to_in_arms_pushed_away
+  category: swing
+  confidence: plausible
+  description: "Downswing initiated with arms throwing outward from the top, bringing the hosel as the leading edge of the club to the ball. Distinct from a standard over-the-top slice because the lateral movement of the hands is more pronounced."
+  indicators:
+    - feature: shoulder_rotation_proxy_at_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.4
+      reasoning: "Stopgap while trail_elbow_position_at_P4_to_P7 is not built. Same feature/threshold/weight as slice cause 2 per causes_catalog consistency rule. Weight below fallback floor — cause can't diagnose on shoulder alone."
+    - feature: hand_path_proxy_at_P5_proxy
+      mode: raw
+      operator: gt
+      threshold: 0.0
+      confidence_weight: 0.3
+      reasoning: "Corroborating. Baseline mean -0.245, stddev 0.097 — all 15 normal swings had negative values (hands moving inward at P5). Threshold at 0 catches any outward hand motion. Feature is documented weak in phase2_notes (over_the_top demo swing_20 was more negative than baseline, wrong direction) — a real out-to-in-arms-pushed-away pattern may or may not fire this indicator."
+  fix:
+    technical_instruction: "Start the downswing with the lower body — feel the trail elbow drop toward the trail hip while the hands stay back, before the arms move outward. Once the transition is bottom-up, the hands stay on the correct path."
+  feels:
+    - feel: "Feel like your trail elbow slots into your trail hip at the start of the downswing"
+      best_for: "players who feel their arms throwing out from the top"
+      why_it_works: "Redirects the downswing to a lower-body-first sequence by giving the trail elbow a specific destination that prevents outward movement."
+    - feel: "Feel like your hands travel down first, not out, at the start of the downswing"
+      best_for: "players who understand the difference between vertical and lateral hand motion"
+      why_it_works: "Directly reframes the initial move as a vertical drop rather than a lateral throw — the geometry that produces a shank."
+  drills:
+    - name: "Slot drill for the trail elbow"
+      youtube_url: ""
+
+- cause_id: arms_disconnect
+  category: swing
+  confidence: plausible
+  description: "Arms extend and separate from the body during the downswing — result of trying to reach for the ball or losing connection. Club's path moves outward, bringing the hosel to the ball. Distinct from over-the-top (torso-driven) and early extension (hip-driven); this is an arms-only fault."
+  indicators:
+    - feature: lead_arm_to_torso_angle_at_P5_proxy
+      mode: raw
+      operator: gt
+      threshold: 55.0
+      confidence_weight: 0.5
+      reasoning: "Primary. Baseline mean 39.3°, stddev 10.4°. Threshold ~1.5σ above baseline catches meaningful arm separation. No fault demo — plausible confidence."
+    - feature: hand_distance_from_body_at_P7
+      mode: raw
+      operator: gt
+      threshold: 0.78
+      confidence_weight: 0.4
+      reasoning: "Corroborating. Baseline mean 0.644, stddev 0.093. Threshold ~1.5σ above baseline — hands further from body at impact than typical."
+  fix:
+    technical_instruction: "Maintain connection between the lead arm and body throughout the downswing. Feel the lead armpit connected to the chest — arms and body rotating together rather than arms separating and reaching outward."
+  feels:
+    - feel: "Feel like your lead armpit stays connected to your chest all the way through impact"
+      best_for: "players whose arms visibly separate from the body in the downswing"
+      why_it_works: "Physical connection cue that prevents the arms from extending independently — the specific geometry that produces a shank."
+    - feel: "Feel like your chest and arms rotate together as one unit through impact"
+      best_for: "players who understand connection as a concept but can't feel it"
+      why_it_works: "Reframes the swing as body-driven rotation rather than arm-driven reaching, keeping the club on the correct path."
+  drills:
+    - name: "Towel under lead armpit drill"
+      youtube_url: ""

@@ -1,0 +1,195 @@
+# kb/inconsistent_contact.yaml
+#
+# Symptom: player hits some shots well and some poorly with no
+# predictable pattern. The symptom is the variance itself, not any
+# specific miss. Requires >= 2 swings to have a finite stddev;
+# ideally 5 swings per causes_catalog.
+#
+# Diagnostic framing differs from other symptoms — instead of "here's
+# what's wrong," output is "here are the places your swing varies
+# most, ranked by magnitude." LLM prompt design for Phase 4 handles
+# this framing (feels are process feels, not motion feels).
+#
+# All indicators use stddev_gt mode: the indicator fires when the
+# user's cross-swing stddev of the feature exceeds the raw threshold.
+# stddev_gt bypasses the 60% consistency filter (variance is
+# inherently cross-swing).
+#
+# Threshold philosophy (v1):
+# Set at ~2x population baseline stddev per feature. Rationale:
+# population stddev is what you see when you compute cross-swing
+# variance on the 15-normal baseline — it captures both within-session
+# and session-to-session variance combined. A single user's within-
+# session stddev of 5 swings should be substantially below population
+# stddev if they're consistent. Threshold at 2x population catches
+# sessions where within-session variance exceeds full cross-session
+# variance, which is meaningfully abnormal.
+#
+# The initial 75%-of-population-stddev rule failed empirically —
+# Test E in scripts/test_matcher.py fired every indicator on the
+# normal-swing set because population stddev IS the reference,
+# not an upper bound.
+#
+# Placeholder tuning — Phase 5 real-user data will retune.
+
+- cause_id: inconsistent_setup
+  category: setup
+  confidence: plausible
+  description: "Address position varies from swing to swing — different geometry every time means every swing starts from a different starting point and ends at a different place. Often the most impactful inconsistency because it's pre-swing and directly fixable."
+  indicators:
+    - feature: hand_distance_from_body_at_P1
+      mode: stddev_gt
+      operator: gt
+      threshold: 0.185
+      confidence_weight: 0.5
+      reasoning: "Baseline stddev 0.093; threshold ~2x population baseline stddev per file-level rule. Meaningful hand-to-body variance across swings indicates inconsistent arm hang or ball position at address. Placeholder — retune with real-user data in Phase 5."
+    - feature: spine_angle_at_P1
+      mode: stddev_gt
+      operator: gt
+      threshold: 8.5
+      confidence_weight: 0.5
+      reasoning: "Baseline stddev 4.32°; threshold ~2x population baseline stddev. Variance in spine tilt at address means the player is bending over the ball differently swing to swing. Placeholder — retune with real-user data in Phase 5."
+    - feature: knee_flex_lead_at_P1
+      mode: stddev_gt
+      operator: gt
+      threshold: 13.3
+      confidence_weight: 0.3
+      reasoning: "Corroborating; baseline stddev 6.67°; threshold ~2x population baseline stddev. Variance in lead knee flex indicates inconsistent athletic posture at setup. Placeholder — retune with real-user data in Phase 5."
+  fix:
+    technical_instruction: "Build a pre-shot routine that gets you to the same address position every time. Check ball position, foot width, spine tilt, and knee flex against a mental or visual checklist before every swing."
+  feels:
+    - feel: "Feel the same pressure in the balls of your feet every time you set up, before you begin the swing"
+      best_for: "players who set up quickly and without a routine"
+      why_it_works: "External sensation (foot pressure) is a reliable, repeatable checkpoint that anchors the rest of the setup — if the feet feel the same, the geometry above them tends to follow."
+    - feel: "Feel like you 'match' a photo of your best address position each time — pause and check before the first move"
+      best_for: "players who understand what good address looks like but don't repeat it"
+      why_it_works: "Uses visual mental imagery as a reference frame, giving the setup an explicit target rather than approximation."
+  drills:
+    - name: "Address position mirror drill"
+      youtube_url: ""
+
+- cause_id: inconsistent_tempo
+  category: swing
+  confidence: plausible
+  description: "Swing timing varies from swing to swing — sometimes smooth, sometimes rushed, sometimes lethargic. The body's sequencing depends on consistent timing, so when tempo varies, contact varies."
+  indicators:
+    - feature: tempo_ratio
+      mode: stddev_gt
+      operator: gt
+      threshold: 0.70
+      confidence_weight: 0.5
+      reasoning: "Baseline stddev 0.35; threshold ~2x population baseline stddev. Variance in backswing-to-downswing ratio across swings indicates unstable transition timing. Placeholder — retune with real-user data in Phase 5."
+    - feature: total_swing_duration
+      mode: stddev_gt
+      operator: gt
+      threshold: 0.67
+      confidence_weight: 0.5
+      reasoning: "Baseline stddev 0.335s; threshold ~2x population baseline stddev. Variance in overall swing length indicates unstable overall pace. Placeholder — retune with real-user data in Phase 5."
+  fix:
+    technical_instruction: "Establish a consistent tempo cue you can repeat every swing. Many golfers use a count (e.g., 'one-two' on the backswing, 'three' on the downswing) or a swing-thought focused on rhythm rather than mechanics."
+  feels:
+    - feel: "Feel the same 'internal metronome' on every swing — count '1, 2' on the way back, '3' on the way down"
+      best_for: "players who understand tempo intellectually but can't repeat it"
+      why_it_works: "Externalizes rhythm into a mental cadence that's easier to reproduce swing to swing than a felt sense of speed."
+    - feel: "Feel like every backswing takes the same amount of time to complete, regardless of how the ball is sitting or which club is in your hand"
+      best_for: "players whose tempo changes based on situation or club"
+      why_it_works: "Decouples tempo from context, treating rhythm as a swing-independent baseline rather than an adaptive response."
+  drills:
+    - name: "Metronome tempo drill"
+      youtube_url: ""
+
+- cause_id: variable_low_point
+  category: swing
+  confidence: plausible
+  description: "Weight and body position at impact vary from swing to swing, so the low point of the swing arc lands in different places relative to the ball. Result: sometimes fat, sometimes thin, sometimes flush — the classic 'I have no idea what I'm going to hit' pattern."
+  indicators:
+    - feature: head_displacement_P1_to_P7_target_axis
+      mode: stddev_gt
+      operator: gt
+      threshold: 0.115
+      confidence_weight: 0.5
+      reasoning: "Baseline stddev 0.057; threshold ~2x population baseline stddev. Variance in head position at impact along the target axis indicates unstable weight shift across swings. Placeholder — retune with real-user data in Phase 5."
+    - feature: head_vertical_change_P1_to_P7
+      mode: stddev_gt
+      operator: gt
+      threshold: 0.115
+      confidence_weight: 0.5
+      reasoning: "Baseline stddev 0.056; threshold ~2x population baseline stddev. Variance in head height at impact indicates unstable posture through the strike. Placeholder — retune with real-user data in Phase 5."
+  fix:
+    technical_instruction: "Build repeatability into your weight shift — feel a distinct load into the trail hip on the backswing and a distinct post-up onto the lead leg through impact, every time."
+  feels:
+    - feel: "Feel like you finish every swing balanced on your lead foot with your trail toe barely touching the ground"
+      best_for: "players whose weight shift varies unpredictably"
+      why_it_works: "Uses the finish position as a check — if the finish is consistent, the weight shift that produced it was consistent."
+    - feel: "Feel like your chest is over the ball at impact, every time"
+      best_for: "players who understand impact position as a target"
+      why_it_works: "Gives the strike a specific body-part destination that anchors the low point relative to the ball."
+  drills:
+    - name: "Balance finish drill"
+      youtube_url: ""
+
+- cause_id: inconsistent_wrist_at_impact
+  category: swing
+  confidence: plausible
+  description: "Wrist position at impact varies across swings, so face angle varies, so direction varies even when contact is solid. Players whose hands are active through impact — flipping, holding, hitting at it — show high wrist-angle variance."
+  indicators:
+    - feature: trail_wrist_angle_at_P7
+      mode: stddev_gt
+      operator: gt
+      threshold: 11.25
+      confidence_weight: 0.5
+      reasoning: "Primary (trail-side more visible from down-the-line, standard rule). Baseline stddev 5.62°; threshold ~2x population baseline stddev. Note: P7 wrist is motion-noisy per phase2_notes, so a portion of measured variance is landmark noise rather than swing variance. Placeholder — retune with real-user data in Phase 5."
+    - feature: lead_wrist_angle_at_P7
+      mode: stddev_gt
+      operator: gt
+      threshold: 24.4
+      confidence_weight: 0.3
+      reasoning: "Corroborating; baseline stddev 12.20°; threshold ~2x population baseline stddev. Lead-side visibility limits + P7 motion noise; used as corroborator only. Placeholder — retune with real-user data in Phase 5."
+  fix:
+    technical_instruction: "Quiet the hands through impact. Feel the body rotation controls the swing while the wrists stay passive — the same wrist position at impact every time comes from letting the body do the work rather than the hands."
+  feels:
+    - feel: "Feel like your body rotation controls the strike and your hands are along for the ride, every time"
+      best_for: "players who describe their hands as 'active' through impact"
+      why_it_works: "Reframes the hands as passive rather than as a driver of the strike, quieting the flip and stabilizing wrist position."
+    - feel: "Feel like your lead wrist stays flat through impact rather than releasing or holding — pass through neutral without pausing on either side"
+      best_for: "players who understand wrist flexion/extension geometry"
+      why_it_works: "Neutral-through-impact is the geometrically simplest position and the most repeatable one to hit consistently."
+  drills:
+    - name: "Impact bag drill for neutral wrist"
+      youtube_url: ""
+
+- cause_id: inconsistent_top_of_backswing
+  category: swing
+  confidence: plausible
+  description: "The player gets to a different top position each swing — sometimes long, sometimes short, sometimes upright, sometimes flat. The downswing has to compensate differently every time, and the compensations vary, and contact varies with them."
+  indicators:
+    - feature: trail_wrist_angle_at_P4
+      mode: stddev_gt
+      operator: gt
+      threshold: 31.5
+      confidence_weight: 0.5
+      reasoning: "Primary (trail-side visibility). Baseline stddev 15.75°; threshold ~2x population baseline stddev. Variance in wrist position at top indicates inconsistent clubface at P4. Placeholder — retune with real-user data in Phase 5."
+    - feature: shoulder_rotation_proxy_at_P4
+      mode: stddev_gt
+      operator: gt
+      threshold: 0.07
+      confidence_weight: 0.3
+      reasoning: "Corroborating; baseline stddev 0.035 (tight 5% CV); threshold ~2x population baseline stddev. Variance in shoulder rotation at top indicates inconsistent backswing length. Placeholder — retune with real-user data in Phase 5."
+    - feature: spine_angle_at_P4
+      mode: stddev_gt
+      operator: gt
+      threshold: 5.5
+      confidence_weight: 0.3
+      reasoning: "Corroborating; baseline stddev 2.77°; threshold ~2x population baseline stddev. Variance in spine tilt at top indicates inconsistent posture through the backswing. Placeholder — retune with real-user data in Phase 5."
+  fix:
+    technical_instruction: "Build a consistent top position by working on a stop-at-the-top drill: swing to what feels like the top, pause, and check that you're in the same position every time. Reduce variability by shortening the backswing to a length you can repeat."
+  feels:
+    - feel: "Feel the same 'stopping point' at the top of every backswing — the same weight distribution, same shoulder tension, same wrist position"
+      best_for: "players whose backswing length varies swing to swing"
+      why_it_works: "Uses a felt stop condition rather than a rotational endpoint, giving the backswing a repeatable landing rather than a maximum-turn ambiguity."
+    - feel: "Feel like your backswing ends at 90% of your maximum turn, every time"
+      best_for: "players who overuse their maximum rotation as the target"
+      why_it_works: "Reducing target to 90% builds in margin that's easier to hit consistently than a maximum, since maximum inevitably varies with warmth/flexibility on the day."
+  drills:
+    - name: "Stop-at-top drill"
+      youtube_url: ""

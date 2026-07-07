@@ -1,0 +1,66 @@
+# kb/pull.yaml
+#
+# Symptom: ball starts left of target and travels in a straight line
+# left (no significant curve). Face is square to swing path but both
+# aimed left — path is out-to-in and face matches.
+#
+# Two causes in v1: alignment-left and ball-position-forward were
+# dropped (invisible-axis principle / v2 ball detection). Closed-
+# shoulders-at-top was dropped as redundant with over-the-top and
+# unable to clear fallback floor alone. Pull expected to hit the
+# "no clear cause" fallback more frequently than other symptoms —
+# this is documented and correct behavior per causes_catalog.
+
+- cause_id: over_the_top_with_square_face
+  category: swing
+  confidence: plausible
+  description: "Downswing initiated with the upper body throwing the arms outward, producing an out-to-in path that the face matches squarely rather than opening to."
+  indicators:
+    - feature: shoulder_rotation_proxy_at_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.5
+      reasoning: "Stopgap while trail_elbow_position_at_P4_to_P7 is not built. Shoulders open at impact = out-to-in path. Distinguished from slice cause 2 only by user's reported symptom (pull vs slice), not by an in-KB indicator. Same feature, threshold, and weight as slice's over_the_top cause per causes_catalog consistency rule."
+  fix:
+    technical_instruction: "Start the downswing with the lower body — feel the trail elbow drop toward the trail hip while the hands stay back, before the shoulders open. Once the path is corrected, the face-to-path relationship should stay square."
+  feels:
+    - feel: "Feel like your trail elbow slots into your trail hip at the start of the downswing"
+      best_for: "players who initiate the downswing with their shoulders"
+      why_it_works: "Redirects transition to a lower-body-first sequence by giving the trail elbow a specific destination."
+    - feel: "Feel like you're swinging the club out toward right field (for right-handed golfers) rather than across your body"
+      best_for: "players who visually sense their club going left through impact"
+      why_it_works: "Reframes the swing path with a target-external cue that opposes the out-to-in tendency."
+  drills:
+    - name: "Headcover-outside-ball drill"
+      youtube_url: ""
+
+- cause_id: early_extension
+  category: swing
+  confidence: plausible
+  description: "Hips thrust toward the ball in the downswing and the spine straightens, forcing arm compensations. When the compensations produce a square face (not open), the result is a pull rather than a slice."
+  indicators:
+    - feature: spine_angle_change_P1_to_P7
+      mode: zscore
+      operator: lt
+      threshold: -1.5
+      confidence_weight: 0.7
+      reasoning: "Primary. Same feature/threshold/weight as slice cause 4, push cause 2, fat cause 2, thin cause 1, shank cause 1 per causes_catalog consistency rule (5-symptom shared cause)."
+    - feature: hip_vertical_change_P1_to_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.3
+      reasoning: "Corroborating only per phase2_notes (rotation-confounded). Same as slice cause 4."
+  fix:
+    technical_instruction: "Maintain your spine angle from address through impact. Hips should rotate around the spine, not thrust toward the ball."
+  feels:
+    - feel: "Feel like you're sitting into your trail hip at the top and posting up on your lead leg through impact, keeping your rear against an imaginary wall behind you"
+      best_for: "players whose hips visibly thrust toward the ball"
+      why_it_works: "Anchors the pelvis to a fixed reference (the wall), preventing forward thrust while allowing rotation."
+    - feel: "Feel like your head stays at the same height from start to finish"
+      best_for: "players who can sense their own height change"
+      why_it_works: "Head height is a proxy for spine angle maintenance; keeping it stable prevents the extension."
+  drills:
+    - name: "Chair drill for early extension"
+      youtube_url: ""

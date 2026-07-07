@@ -36,6 +36,8 @@ src/golf_diagnostic/
 
 │   │                        # AggregatedFeatures, aggregate()
 
+│   ├── orchestrator.py      # compute_swing_features(pose, checkpoints, handedness) -> SwingFeatures
+
 │   └── extractors/
 
 │       ├── wrists.py        # WristExtractor
@@ -44,11 +46,19 @@ src/golf_diagnostic/
 
 │       ├── posture.py       # PostureExtractor
 
-│       └── position.py      # PositionExtractor
+│       ├── position.py      # PositionExtractor
 
-├── diagnosis/               # Phase 3+ (empty)
+│       ├── tempo.py         # TempoExtractor
 
-├── kb/                      # Phase 3+ (empty)
+│       └── interpolated_p5.py  # InterpolatedP5Extractor
+
+├── kb/
+
+│   └── loader.py            # KB YAML → KnowledgeBase; Pydantic validation
+
+├── diagnosis/
+
+│   └── matcher.py           # (swings, aggregate, kb) → list[RankedCause]
 
 └── api/                     # Phase 5+ (empty)
 
@@ -304,8 +314,9 @@ aggregate(swings: list[SwingFeatures]) -> AggregatedFeatures
 - If 1 finite value: mean is that value, stddev/range NaN.
 - Raises `ValueError` on empty input.
 
-**Status**: `aggregate()` is built but nothing calls it yet. Reserved
-for Phase 3 (KB matching) and Phase 4 (LLM prompt construction).
+**Status**: `aggregate()` is called by the matcher in
+`src/golf_diagnostic/diagnosis/matcher.py`. Also used by KB audit
+and sanity scripts.
 
 ---
 
@@ -362,7 +373,7 @@ attempt to fix P7 at 60fps.
 
 ### features/extractors/rotation.py
 
-**Features (6)**:
+**Features (7)**:
 - `shoulder_rotation_proxy_at_{P4, P7}`
 - `hip_rotation_proxy_at_{P4, P7, P10}`
 - `hip_rotation_change_P7_to_P10` (delta: P10 minus P7)
@@ -376,9 +387,10 @@ Unitless ratio.
 - ~0 = shoulders/hips roughly parallel to target line
 - Positive = rotated in follow-through direction (typical at P10)
 
-**Empirical baselines** (normal-swing means, 15-swing dataset):
-- shoulder@P4: −0.70, shoulder@P7: −0.26
-- hip@P4: −0.40, hip@P7: −0.18, hip@P10: +0.44
+**Empirical baselines** (normal-swing means, 15-swing dataset,
+`kb/baseline.yaml`):
+- shoulder@P4: −0.702, shoulder@P7: −0.256
+- hip@P4: −0.398, hip@P7: −0.178, hip@P10: +0.444
 
 **Constant**: `_MIN_REFERENCE_LENGTH = 0.05` — features return NaN if
 ankle-to-hip vertical falls below this at P1.
@@ -418,7 +430,10 @@ may drift across sessions.
 `spine_angle_change_P1_to_P7` is the PRIMARY early-extension indicator
 in the v1 KB. It took over that role from `hip_vertical_change_P1_to_P7`
 (which is confounded by natural hip rotation — see position extractor
-notes). Used across slice, push, fat, thin, and shank causes.
+notes). Used across slice, pull, push, fat, thin, and shank causes.
+`spine_angle_change_P1_to_P4` is the discriminator between early
+extension (P1→P7 delta) and loss of posture (P1→P4 delta) in thin
+contact.
 
 ---
 
@@ -453,8 +468,75 @@ still be computed.
   pivot (fires only on extreme cases; swing_24 demo failed direction)
 - `hip_vertical_change_P1_to_P7` — CORROBORATING for early extension
   only. Confounded by natural hip rotation; do not treat as primary.
-- `hand_distance_from_body_at_P7`, `ankle_displacement_at_P7`,
-  `stance_width_at_P1` — noisy from down-the-line; KB downweights.
+- `hand_distance_from_body_at_P1` — used raw for shank
+  standing_too_close cause (needs conservative thresholds due to 19%
+  baseline CV) AND as stddev_gt for inconsistent_setup.
+- `hand_distance_from_body_at_P7` — used for shank arms_disconnect.
+- `ankle_displacement_at_P7`, `stance_width_at_P1`,
+  `hip_displacement_P1_to_P7_target_axis` — retained for v2, no v1
+  KB use.
+
+---
+
+### features/extractors/tempo.py
+
+**Features (2)**: `tempo_ratio`, `total_swing_duration`
+
+**Formulas**:
+- `tempo_ratio` = (p4 − p1) / (p7 − p4). Unitless. Backswing frames
+  divided by downswing frames.
+- `total_swing_duration` = (p10 − p1) / fps. Seconds.
+
+**Signature quirk**: `TempoExtractor.extract(...)` takes an optional
+`fps: float | None = None` kwarg beyond the standard extractor
+signature. If None, `total_swing_duration` returns NaN (frame count
+still computed) — but in practice the orchestrator always passes fps
+from `pose_data.fps`. Other extractors ignore the fps kwarg via the
+orchestrator's dispatch table.
+
+**Empirical baseline** (15 normal swings, `kb/baseline.yaml`):
+- `tempo_ratio`: mean 2.01, stddev 0.35 — user's natural tempo sits
+  below the 3:1 tour norm.
+- `total_swing_duration`: mean 1.45s, stddev 0.335s.
+
+**Validation status**: features are directly measured (no proxy).
+Downgraded from validated to plausible confidence per phase2_notes
+because slow-tempo demo (swing_26) failed to produce a slow swing
+and rushed-transition demo (swing_27) underperformed.
+
+---
+
+### features/extractors/interpolated_p5.py
+
+**Features (4)**:
+- `lead_wrist_angle_at_P5_proxy` — interpolated frame midpoint of P4 and P7
+- `trail_wrist_angle_at_P5_proxy` — interpolated frame midpoint
+- `lead_arm_to_torso_angle_at_P5_proxy` — angle at midpoint
+- `hand_path_proxy_at_P5_proxy` — change in hand-to-body distance P4→P5
+
+**Frame choice**: values are measured at the interpolated midpoint
+frame `(p4 + p7) // 2`, NOT the arithmetic mean of P4 and P7 feature
+values. Option B from the design discussion — preserves what the
+wrist actually did at midpoint rather than diluting with the
+neutral P7 value.
+
+**Wrist measurement side flip**: at P5, `lead_wrist_angle_at_P5_proxy`
+is PRIMARY (baseline stddev 12.7°) and `trail_wrist_angle_at_P5_proxy`
+is CORROBORATING (baseline stddev 20.0°) — the OPPOSITE of the P4/P7
+convention. Motion jitter at mid-downswing exceeds visibility-limited
+noise on the lead side. Documented in phase2_notes.
+
+**Validation status**:
+- `lead_wrist_angle_at_P5_proxy` — plausible (cupped demo validates
+  direction; no casting demo)
+- `trail_wrist_angle_at_P5_proxy` — weak (motion-noisy)
+- `lead_arm_to_torso_angle_at_P5_proxy` — plausible (baseline clean;
+  no shank demo)
+- `hand_path_proxy_at_P5_proxy` — weak. All 15 normals had negative
+  values (hands moving inward at P5). Over-the-top demo swing_20 was
+  more negative than baseline, wrong direction — feature captures
+  wrong phase of downswing for the OTT fault. Used only as a
+  corroborator in shank cause 3.
 
 ---
 
@@ -511,6 +593,170 @@ Standard extractors use `lambda pose: {}`. If the extractor's
 
 ---
 
+## kb/loader.py
+
+Loads and validates KB YAML files. First file in the `kb/` Python
+package.
+
+**Constants**
+- `SUPPORTED_SYMPTOMS: frozenset[str]` — the 9 v1 symptoms: `slice`,
+  `hook`, `pull`, `push`, `fat_contact`, `thin_contact`,
+  `lack_of_distance`, `inconsistent_contact`, `shank`.
+
+**Pydantic models**
+
+```python
+class Indicator(BaseModel):
+    feature: str                              # must be in FEATURE_NAMES
+    mode: Literal["raw", "zscore", "stddev_gt"]
+    operator: Literal["gt", "lt", "gte", "lte", "abs_gt"]
+    threshold: float
+    confidence_weight: float                  # 0.0 to 1.0
+    reasoning: str = ""
+
+class Feel(BaseModel):
+    feel: str
+    best_for: str = ""
+    why_it_works: str = ""
+
+class Drill(BaseModel):
+    name: str
+    youtube_url: str = ""
+
+class Fix(BaseModel):
+    technical_instruction: str
+
+class Cause(BaseModel):
+    cause_id: str
+    category: Literal["swing", "setup"]
+    confidence: Literal["validated", "plausible", "weak"]
+    description: str
+    indicators: list[Indicator]               # min 1
+    fix: Fix
+    feels: list[Feel]                         # min 1
+    drills: list[Drill] = []
+```
+
+**BaselineEntry dataclass** (per-feature statistics from
+`kb/baseline.yaml`):
+```python
+@dataclass(frozen=True)
+class BaselineEntry:
+    mean: float   # NaN if n == 0
+    stddev: float # NaN if n < 2
+    n: int
+```
+
+**KnowledgeBase container**:
+```python
+@dataclass(frozen=True)
+class KnowledgeBase:
+    causes_by_symptom: dict[str, list[Cause]]
+    baseline: dict[str, BaselineEntry]
+
+    def get_causes(self, symptom: str) -> list[Cause]
+    def loaded_symptoms(self) -> list[str]
+```
+
+**Public function**
+```python
+load_kb(kb_dir: Path) -> KnowledgeBase
+```
+
+**Invariants / gotchas**
+- Baseline must exist at `<kb_dir>/baseline.yaml`. Missing baseline
+  → `FileNotFoundError`. Do not degrade gracefully; missing baseline
+  is a broken repo state.
+- Baseline must cover every feature in `FEATURE_NAMES`. Missing
+  features → `ValueError`.
+- Symptom filename stem must be in `SUPPORTED_SYMPTOMS`. A file like
+  `kb/Slice.yaml` (wrong casing) or `kb/slicee.yaml` (typo) raises
+  `ValueError`. Missing symptom files are OK — loader returns partial
+  coverage during authoring.
+- Every indicator's `feature` field is validated against
+  `FEATURE_NAMES` at Pydantic parse time.
+- `mode: zscore` indicators are cross-validated at load time against
+  baseline: if the referenced feature has non-finite stddev or
+  stddev < 1e-9, `ValueError`.
+- `mode: stddev_gt` indicators must have non-negative threshold.
+- Duplicate `cause_id` within a symptom file → `ValueError`.
+- `KnowledgeBase.get_causes(symptom)` for an unloaded symptom returns
+  `[]`; for an unsupported symptom raises `KeyError`.
+- Loader ignores `baseline.yaml` when scanning `<kb_dir>` for symptom
+  files.
+
+---
+
+## diagnosis/matcher.py
+
+Matches user swings against KB causes. First file in the `diagnosis/`
+package.
+
+**Module constants**
+- `CONSISTENCY_THRESHOLD = 0.60` — fraction of swings on which a
+  per-swing indicator must fire to count as matched.
+- `FALLBACK_SCORE_FLOOR = 0.5` — top cause must clear this to avoid
+  fallback.
+
+**Result types**
+```python
+@dataclass(frozen=True)
+class MatchedIndicator:
+    indicator: Indicator
+    hit_count: int              # swings where indicator fired
+    swing_count: int            # total swings evaluated
+    representative_value: float # mean of hit values (per-swing)
+                                # or the aggregate stddev (stddev_gt mode)
+
+@dataclass(frozen=True)
+class RankedCause:
+    cause: Cause
+    score: float                # sum of matched indicators' weights
+    matched_indicators: list[MatchedIndicator]
+```
+
+**Public functions**
+```python
+match_symptom(
+    symptom: str,
+    swings: list[SwingFeatures],
+    aggregate: AggregatedFeatures,
+    kb: KnowledgeBase,
+) -> list[RankedCause]
+    # Returns all causes for the symptom sorted descending by score.
+    # Ties preserved in KB author order (stable sort).
+    # Empty list if the symptom has no loaded KB.
+    # Raises ValueError if swings is empty.
+
+should_fall_back(ranked: list[RankedCause]) -> bool
+    # True if the empty list, no matched indicators, or
+    # top score < FALLBACK_SCORE_FLOOR.
+```
+
+**Indicator evaluation semantics**
+- `mode: raw` — evaluate condition on the per-swing feature value
+  directly. NaN never matches. Per-swing → apply consistency filter.
+- `mode: zscore` — evaluate condition on the z-score
+  `(value - baseline.mean) / baseline.stddev`. Per-swing → apply
+  consistency filter. Requires finite baseline stddev (guarded at
+  load time; defensively rechecked at eval time).
+- `mode: stddev_gt` — evaluate condition on the aggregate's
+  cross-swing stddev of the feature. BYPASSES the consistency filter.
+  NaN stddev (n<2 swings) never matches. `representative_value` is
+  the aggregate stddev itself.
+
+**Operator table** (module-level `_OPERATORS`):
+`{"gt": op.gt, "lt": op.lt, "gte": op.ge, "lte": op.le,
+"abs_gt": lambda x, t: abs(x) > t}`.
+
+**Extending**
+Adding a new operator or mode requires (1) updating the
+`Indicator.operator` / `Indicator.mode` Literals in `kb/loader.py`,
+(2) adding the branch in `_evaluate_per_swing` or `_evaluate_stddev`
+in `matcher.py`, (3) documenting in this file.
+
+---
+
 ## Data layout
 
 data/
@@ -562,7 +808,10 @@ swing_NN:
   type: "normal" | "fault_demo"
   intended_fault: <snake_case>    # fault_demo only
   expected_features:              # fault_demo only
-    <feature_name>: <description>
+    <feature_name>:
+      direction: high | low
+      known_weak: true            # optional
+  deferred: true                  # optional; skip validation
   notes: <free text>
 ```
 
@@ -579,12 +828,132 @@ normal_ids = [sid for sid, meta in labels.items() if meta.get("type") == "normal
 
 ---
 
+## KB layout
+
+kb/
+
+├── baseline.yaml               # per-feature mean/stddev/n from normals
+
+├── slice.yaml                  # per-symptom cause definitions
+
+├── hook.yaml
+
+├── pull.yaml
+
+├── push.yaml
+
+├── fat_contact.yaml
+
+├── thin_contact.yaml
+
+├── lack_of_distance.yaml
+
+├── inconsistent_contact.yaml
+
+└── shank.yaml
+
+### `kb/baseline.yaml`
+
+Flat dict keyed by feature name. One entry per feature in
+`FEATURE_NAMES`. Regenerated by `scripts/regenerate_baseline.py`
+from swings labeled `type: normal` in `data/labels.yaml`.
+
+Header comment documents regeneration policy. Entry format:
+```yaml
+shoulder_rotation_proxy_at_P4:
+  mean: -0.7023
+  stddev: 0.0346
+  n: 15
+```
+
+`mean: null` when `n: 0`. `stddev: null` when `n < 2`.
+
+**Regeneration is a deliberate action, not a runtime side effect.**
+Regenerating after refilming normals or changing extractors
+implicitly retunes all `zscore`-mode KB thresholds. That's the
+intended tradeoff; commit the diff explicitly.
+
+Values are rounded to 4 decimals for reproducible byte-identical
+output across runs.
+
+### `kb/<symptom>.yaml`
+
+List of causes at the top level. Each cause is a Pydantic-validated
+`Cause` (see `kb/loader.py`). Priority is implicit in list order —
+ties in matcher score are broken by YAML list order via stable sort.
+
+Comment block at the top of each file documents:
+- Symptom description
+- V1 drops (which causes are missing and why)
+- Any threshold philosophy specific to this file (e.g.,
+  `inconsistent_contact.yaml` documents the "2× population baseline
+  stddev" rule for stddev_gt indicators)
+
+Every threshold and weight has a `reasoning` field on the indicator
+explaining where the value came from. Convention:
+- Cite baseline statistics from `baseline.yaml`
+- Cite fault-demo evidence when validated
+- Cite `causes_catalog.md` when reusing a shared cause across symptom
+  files (the "consistency rule": same feature → same threshold →
+  same weight across every symptom)
+- Cite `phase2_notes.md` or `phase3_notes.md` when the choice
+  reflects an empirical finding
+
+---
+
 ## Scripts
 
 ### `scripts/batch_segment.py`
 Runs the full Phase 1 pipeline over `data/raw/*.mov`. Pose data is
 cached; pass `--force` to re-extract. Writes `segmentation_summary.txt`.
 python scripts/batch_segment.py [--force]
+
+### `scripts/regenerate_baseline.py`
+Regenerates `kb/baseline.yaml` from swings labeled `type: normal` in
+`data/labels.yaml`. Loads cached pose NPZs, parses checkpoints from
+`segmentation_summary.txt`, runs `compute_swing_features` on each
+swing, aggregates. Fails loud on missing pose cache or missing
+checkpoint entry.
+python scripts/regenerate_baseline.py
+
+### `scripts/audit_kb_against_normals.py`
+For each loaded symptom (or a specific one via `--symptom`),
+evaluates every normal swing individually against the KB and
+reports whether the fallback would trigger. False positives (fallback
+did NOT trigger) surface threshold-tuning problems. Near misses
+(fallback triggered but score > 0) show corroborator-only or
+below-floor fires that are correct behavior.
+
+The audit is a threshold pressure test, not an accuracy metric. See
+phase3_notes.md for interpretation rules and persistent-anomaly
+documentation (swing_11 spine change, swing_06 shoulder rotation,
+swing_10 hand distance).
+python scripts/audit_kb_against_normals.py [--symptom NAME]
+
+### `scripts/test_matcher.py`
+End-to-end matcher tests. Six test cases:
+- Test A: 3 normal swings vs slice (expect fallback)
+- Test B: swing_16 (cupped fault demo) vs slice (expect
+  cupped_lead_wrist_at_top #1 at 1.40)
+- Test C: swing_25 (short_backswing demo) vs lack_of_distance
+  (expect insufficient_body_rotation #1 at 1.50)
+- Test D: swing_22 (hanging_back demo) vs push (expect hanging_back
+  at 0.50, just clears floor — validated with modest signal)
+- Test E: 15 normals grouped vs inconsistent_contact (expect
+  fallback — population stddev is the reference, 2×-baseline
+  thresholds hold)
+- Test F: 5 disparate fault demos vs inconsistent_contact (expect
+  only inconsistent_top_of_backswing firing at 0.50)
+
+Serves as regression check for matcher, loader, and KB threshold
+integrity. If a threshold change or schema change breaks a validated
+test, it surfaces here.
+python scripts/test_matcher.py
+
+### `scripts/test_kb_loader.py`
+Sanity-checks the KB loader against whatever's currently in `kb/`.
+Prints loaded symptoms with cause/indicator/feel counts.
+python scripts/test_kb_loader.py
 
 ### `scripts/test_<extractor>_extractor.py`
 Sanity script per extractor. Standard pattern:
@@ -599,6 +968,14 @@ Unit-ish tests for individual modules (primitives, schema,
 segmentation, visualizer). Not pytest-based — plain `python
 scripts/test_foo.py` and read output.
 
+### `scripts/validate_features.py`
+End-to-end regression check driven by `data/labels.yaml`. Runs the
+orchestrator on every labeled swing and verifies fault demos produce
+expected feature directions. See phase2_notes for validation-result
+categories (validated / weak-signal / feature-intrinsic / demo-
+execution-gap / structural-only).
+python scripts/validate_features.py
+
 ---
 
 ## Environment
@@ -606,5 +983,5 @@ scripts/test_foo.py` and read output.
 - Python 3.12.13
 - Virtual env at `.venv`
 - Package installed editable: `pip install -e .`
-- Key pins: `mediapipe==0.10.14`
+- Key pins: `mediapipe==0.10.14`, `pydantic`, `pyyaml`, `anthropic`
 - Runs on CPU (no GPU needed for MediaPipe Pose)

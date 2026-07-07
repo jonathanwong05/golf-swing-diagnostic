@@ -1,0 +1,115 @@
+# kb/fat_contact.yaml
+#
+# Symptom: club strikes the ground before the ball. Low point of the
+# swing arc is behind the ball rather than at or just ahead of it.
+# All four causes are shared with other symptoms — different stories
+# about how the low point ended up behind the ball. Indicator numerics
+# match the source symptom per causes_catalog consistency rule.
+
+- cause_id: hanging_back
+  category: swing
+  confidence: validated
+  description: "Weight stays on the trail foot through impact; head ends up behind where it was at address. The low point of the arc stays behind the ball rather than shifting to under the sternum ahead of the ball — divot before ball."
+  indicators:
+    - feature: head_displacement_P1_to_P7_target_axis
+      mode: zscore
+      operator: lt
+      threshold: -1.0
+      confidence_weight: 0.5
+      reasoning: "Primary. Same feature/threshold/weight as push cause 3 per causes_catalog consistency rule. Validated on swing_22 (z=-1.24); note baseline-tail members swing_03/swing_07 also fire — see push.yaml reasoning for details."
+  fix:
+    technical_instruction: "Shift your weight forward through the downswing so your sternum is over or slightly ahead of the ball at impact. Feel your lead hip and lead shoulder move toward the target as the club approaches the ball."
+  feels:
+    - feel: "Feel like your chest is over the ball at impact rather than behind it"
+      best_for: "players whose head visibly stays back at impact"
+      why_it_works: "Anchors weight shift to a visible body-part destination — if the chest is over the ball, the swing bottom shifts with it."
+    - feel: "Feel like your lead knee stacks over your lead ankle at impact"
+      best_for: "players who understand the concept of posting up"
+      why_it_works: "Uses the lead leg as a physical destination for weight, forcing the weight shift that moves the low point forward."
+  drills:
+    - name: "Step-through impact drill"
+      youtube_url: ""
+
+- cause_id: early_extension
+  category: swing
+  confidence: plausible
+  description: "Hips thrust toward the ball in the downswing and the spine straightens; the arms have to compensate by reaching down to find the ball. When the compensation falls short, the club catches turf behind the ball — fat contact."
+  indicators:
+    - feature: spine_angle_change_P1_to_P7
+      mode: zscore
+      operator: lt
+      threshold: -1.5
+      confidence_weight: 0.7
+      reasoning: "Primary. Same feature/threshold/weight as slice cause 4, pull cause 2, push cause 2, thin cause 1, shank cause 1 per causes_catalog consistency rule (5-symptom shared cause)."
+    - feature: hip_vertical_change_P1_to_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.3
+      reasoning: "Corroborating only per phase2_notes (rotation-confounded). Same as slice cause 4."
+  fix:
+    technical_instruction: "Maintain your spine angle from address through impact. Hips should rotate around the spine, not thrust toward the ball."
+  feels:
+    - feel: "Feel like you're sitting into your trail hip at the top and posting up on your lead leg through impact, keeping your rear against an imaginary wall behind you"
+      best_for: "players whose hips visibly thrust toward the ball"
+      why_it_works: "Anchors the pelvis to a fixed reference (the wall), preventing forward thrust while allowing rotation."
+    - feel: "Feel like your head stays at the same height from start to finish"
+      best_for: "players who can sense their own height change"
+      why_it_works: "Head height is a proxy for spine angle maintenance; keeping it stable prevents the extension."
+  drills:
+    - name: "Chair drill for early extension"
+      youtube_url: ""
+
+- cause_id: casting_early_release
+  category: swing
+  confidence: plausible
+  description: "Wrist angle between lead arm and club is released too early in the downswing; the club reaches full extension behind the ball, and the arc bottoms out before the ball — divot before ball."
+  indicators:
+    - feature: lead_wrist_angle_at_P5_proxy
+      mode: raw
+      operator: lt
+      threshold: 15.0
+      confidence_weight: 0.4
+      reasoning: "Primary. Same feature/threshold/weight as lack_of_distance cause 3 per causes_catalog consistency rule. Weight below fallback floor — no casting fault demo exists in dataset."
+    - feature: trail_wrist_angle_at_P5_proxy
+      mode: raw
+      operator: gt
+      threshold: 15.0
+      confidence_weight: 0.3
+      reasoning: "Corroborating. Same as lack_of_distance cause 3."
+  fix:
+    technical_instruction: "Maintain wrist hinge deeper into the downswing. Feel the club handle leading the clubhead all the way until just before impact, then let the natural release happen at the ball."
+  feels:
+    - feel: "Feel like your trail elbow reaches your trail side pocket before your wrists start to release"
+      best_for: "players who throw the club from the top"
+      why_it_works: "Gives a physical landmark for when the release starts, later than the current pattern — pushing the release later moves the low point forward."
+    - feel: "Feel like you're pulling the handle down toward the ball with the clubhead trailing behind"
+      best_for: "players who understand shaft lean as a concept"
+      why_it_works: "Reframes the downswing as a pulling motion, which naturally preserves wrist hinge and shifts the low point ahead of the ball."
+  drills:
+    - name: "Pump drill for late release"
+      youtube_url: ""
+
+- cause_id: reverse_pivot
+  category: swing
+  confidence: weak
+  description: "Weight stays on or moves to the lead side during the backswing; the downswing starts with weight moving backward (away from target) instead of forward. Low point stays behind the ball."
+  indicators:
+    - feature: head_displacement_P1_to_P4
+      mode: raw
+      operator: gt
+      threshold: 0.15
+      confidence_weight: 0.4
+      reasoning: "Weak fallback. Same feature/threshold/weight as slice cause 5 per causes_catalog consistency rule. Fires only on extreme cases; swing_24 demo failed direction (see phase2_notes)."
+  fix:
+    technical_instruction: "Load into your trail hip during the backswing so that at the top your weight is on your trail foot and your upper body is stacked over it — not tilted toward the target."
+  feels:
+    - feel: "Feel like your trail pocket moves back and away from the ball during the backswing"
+      best_for: "players who tilt toward the target on the backswing"
+      why_it_works: "Redirects the backswing to a hip-loading pattern by giving the trail hip a specific destination."
+    - feel: "Feel like your lead shoulder moves down and behind the ball at the top"
+      best_for: "players whose upper body is the source of the reverse pivot"
+      why_it_works: "Uses the lead shoulder as a lever to shift the whole torso trail-side."
+  drills:
+    - name: "Trail-foot-only backswing drill"
+      youtube_url: ""

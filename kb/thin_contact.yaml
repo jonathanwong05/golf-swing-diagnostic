@@ -1,0 +1,122 @@
+# kb/thin_contact.yaml
+#
+# Symptom: club strikes the ball with its leading edge rather than
+# the face — contacts the ball at or above its equator. Low point
+# of the swing arc is too high relative to the ball, or the club
+# bottoms out before the ball and starts rising.
+#
+# Four causes in v1: ball position (forward) dropped (v2 ball detection).
+
+- cause_id: early_extension
+  category: swing
+  confidence: plausible
+  description: "Hips thrust toward the ball in the downswing and the spine straightens; the club is pulled up with the body. When the arms don't compensate enough, the club catches the ball thin — leading edge into the equator."
+  indicators:
+    - feature: spine_angle_change_P1_to_P7
+      mode: zscore
+      operator: lt
+      threshold: -1.5
+      confidence_weight: 0.7
+      reasoning: "Primary. Same feature/threshold/weight as slice cause 4, pull cause 2, push cause 2, fat cause 2, shank cause 1 per causes_catalog consistency rule (5-symptom shared cause)."
+    - feature: hip_vertical_change_P1_to_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.3
+      reasoning: "Corroborating only per phase2_notes (rotation-confounded). Same as slice cause 4."
+  fix:
+    technical_instruction: "Maintain your spine angle from address through impact. Hips should rotate around the spine, not thrust toward the ball."
+  feels:
+    - feel: "Feel like you're sitting into your trail hip at the top and posting up on your lead leg through impact, keeping your rear against an imaginary wall behind you"
+      best_for: "players whose hips visibly thrust toward the ball"
+      why_it_works: "Anchors the pelvis to a fixed reference (the wall), preventing forward thrust while allowing rotation."
+    - feel: "Feel like your head stays at the same height from start to finish"
+      best_for: "players who can sense their own height change"
+      why_it_works: "Head height is a proxy for spine angle maintenance; keeping it stable prevents the extension."
+  drills:
+    - name: "Chair drill for early extension"
+      youtube_url: ""
+
+- cause_id: loss_of_posture
+  category: swing
+  confidence: plausible
+  description: "Spine straightens gradually throughout the backswing without specific hip thrust toward the ball. Distinct from early extension in where the height is lost — this cause fires when posture is lost during the backswing itself, not at impact."
+  indicators:
+    - feature: spine_angle_change_P1_to_P4
+      mode: zscore
+      operator: lt
+      threshold: -1.5
+      confidence_weight: 0.7
+      reasoning: "Primary. Baseline mean +0.26°, stddev 2.66°. Uses the P1→P4 spine delta specifically (rather than the P1→P7 delta used by early_extension) to discriminate posture-during-backswing from hip-thrust-at-impact. Overlaps mechanically with early_extension per causes_catalog; the discriminator is which delta fires. No fault demo — plausible confidence."
+  fix:
+    technical_instruction: "Maintain your address posture throughout the backswing. The spine tilt you set at address should still be in place at the top of the backswing."
+  feels:
+    - feel: "Feel like your spine angle stays fixed while your shoulders rotate around it during the backswing"
+      best_for: "players whose posture visibly straightens during the backswing"
+      why_it_works: "Separates the rotational motion (allowed) from the postural motion (fixed), giving the shoulders permission to turn without the spine having to change."
+    - feel: "Feel like the buttons on your shirt stay pointed at the same spot on the ground from address to the top"
+      best_for: "players who can visualize their chest orientation"
+      why_it_works: "External spatial reference (the ground) locks the spine tilt without requiring the player to feel spine angle directly."
+  drills:
+    - name: "Wall posture drill"
+      youtube_url: ""
+
+- cause_id: casting_early_release
+  category: swing
+  confidence: plausible
+  description: "Wrist angle is released too early in the downswing; the club reaches full extension behind the ball. If the player then pulls up through impact (sensing they're about to hit fat), the club rises and catches the ball thin instead."
+  indicators:
+    - feature: lead_wrist_angle_at_P5_proxy
+      mode: raw
+      operator: lt
+      threshold: 15.0
+      confidence_weight: 0.4
+      reasoning: "Primary. Same feature/threshold/weight as lack_of_distance cause 3 and fat cause 3 per causes_catalog consistency rule. Weight below fallback floor — no casting fault demo."
+    - feature: trail_wrist_angle_at_P5_proxy
+      mode: raw
+      operator: gt
+      threshold: 15.0
+      confidence_weight: 0.3
+      reasoning: "Corroborating. Same as lack_of_distance cause 3."
+  fix:
+    technical_instruction: "Maintain wrist hinge deeper into the downswing. Feel the club handle leading the clubhead all the way until just before impact, then let the natural release happen at the ball."
+  feels:
+    - feel: "Feel like your trail elbow reaches your trail side pocket before your wrists start to release"
+      best_for: "players who throw the club from the top"
+      why_it_works: "Gives a physical landmark for when the release starts, later than the current pattern."
+    - feel: "Feel like you're pulling the handle down toward the ball with the clubhead trailing behind"
+      best_for: "players who understand shaft lean as a concept"
+      why_it_works: "Reframes the downswing as a pulling motion, which naturally preserves wrist hinge."
+  drills:
+    - name: "Pump drill for late release"
+      youtube_url: ""
+
+- cause_id: scoop_at_impact
+  category: swing
+  confidence: plausible
+  description: "Hands flip upward through impact, adding loft and raising the low point of the arc at exactly the wrong moment. Leading edge catches the ball's equator — thin."
+  indicators:
+    - feature: trail_wrist_angle_at_P7
+      mode: raw
+      operator: gt
+      threshold: 10.0
+      confidence_weight: 0.4
+      reasoning: "Primary. P7 wrist is motion-noisy at 60fps (documented in phase2_notes as unfixable at 60fps). swing_18 scoop demo produced trail_wrist=-4.60° (BELOW baseline mean, wrong direction) due to motion jitter. Weight below fallback floor — this cause hits fallback frequently in v1, correct behavior."
+    - feature: head_vertical_change_P1_to_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.3
+      reasoning: "Corroborating (head raised at impact = often paired with scoop pattern per causes_catalog). Baseline mean -0.013, stddev 0.056."
+  fix:
+    technical_instruction: "Compress the ball with a downward strike — hands lead the clubhead through impact, wrist releases just after the ball, not before. Take a small divot AFTER the ball, not before."
+  feels:
+    - feel: "Feel like you're covering the ball with your chest as you strike it, hands ahead of the clubhead"
+      best_for: "players who visibly flip through impact"
+      why_it_works: "Both cues (chest over ball, hands ahead) push the player toward shaft lean at impact — the geometric opposite of scooping."
+    - feel: "Feel like your trail palm faces the ground at impact"
+      best_for: "players who understand wrist-to-face relationship"
+      why_it_works: "A downward-facing trail palm at impact is what a good compressed strike looks like — reframes the wrist action away from flipping upward."
+  drills:
+    - name: "Impact bag drill for shaft lean"
+      youtube_url: ""

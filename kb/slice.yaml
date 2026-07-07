@@ -1,0 +1,122 @@
+# kb/slice.yaml
+#
+# Symptom: ball curves hard right for a right-handed golfer.
+# Root cause is an open clubface relative to swing path at impact.
+# Four causes in v1 (weak grip dropped — see causes_catalog.md).
+
+- cause_id: cupped_lead_wrist_at_top
+  category: swing
+  confidence: validated
+  description: "Clubface is open at impact due to a cupped lead wrist / extended trail wrist at the top of the backswing that carries into impact."
+  indicators:
+    - feature: trail_wrist_angle_at_P4
+      mode: raw
+      operator: gt
+      threshold: 40.0
+      confidence_weight: 1.0
+      reasoning: "Primary indicator. Baseline mean 6.4°, stddev 15.8°. Threshold ~1.2σ above baseline. Validated on swing_16 demo (52°, z=+2.89)."
+    - feature: trail_wrist_angle_at_P7
+      mode: raw
+      operator: gt
+      threshold: 15.0
+      confidence_weight: 0.4
+      reasoning: "Corroborating; P7 wrist is motion-noisy at 60fps. Baseline mean 1.2°, stddev 5.6°."
+    - feature: lead_wrist_angle_at_P4
+      mode: raw
+      operator: gt
+      threshold: 60.0
+      confidence_weight: 0.4
+      reasoning: "Corroborating; lead-side visibility limited from down-the-line. Baseline mean 27.6°, stddev 16.4°."
+  fix:
+    technical_instruction: "Bow your lead wrist at the top of the backswing so the clubface is square or slightly closed at P4, then hold that wrist condition through impact."
+  feels:
+    - feel: "Feel like the back of your lead hand points at the ground at the top of the backswing"
+      best_for: "players with clearly cupped wrist at P4 who can visualize wrist position directly"
+      why_it_works: "Exaggeration of the target position; the actual movement needed is small but the feel needs to be large."
+    - feel: "Feel like you're hiding the clubface from the sky at the top"
+      best_for: "players who think in terms of clubface rather than wrist mechanics"
+      why_it_works: "Reframes the cue from wrist geometry to clubface orientation, which is easier to feel for many players."
+    - feel: "Feel like your lead thumb points to the ground behind you at the top"
+      best_for: "players whose backswing is otherwise on plane"
+      why_it_works: "Anchors the wrist rotation to a body-relative direction the player can sense without looking."
+  drills:
+    - name: "Bowed wrist drill (Athletic Motion Golf)"
+      youtube_url: ""
+
+- cause_id: over_the_top
+  category: swing
+  confidence: plausible
+  description: "Downswing initiated with the upper body throwing the arms outward, producing an out-to-in path with the face open to that path."
+  indicators:
+    - feature: shoulder_rotation_proxy_at_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.5
+      reasoning: "Stopgap primary while trail_elbow_position_at_P4_to_P7 is not built. Shoulder rotation at P7 is noisy (59% CV); high z-score required. Validated on swing_20 (z=+2.3)."
+  fix:
+    technical_instruction: "Start the downswing with the lower body — feel the trail elbow drop toward the trail hip while the hands stay back, before the shoulders open."
+  feels:
+    - feel: "Feel like your trail elbow slots into your trail hip at the start of the downswing"
+      best_for: "players who initiate the downswing with their shoulders"
+      why_it_works: "Redirects transition to a lower-body-first sequence by giving the trail elbow a specific destination."
+    - feel: "Feel like you're pulling the club handle down toward the ball, not throwing it out"
+      best_for: "players whose over-the-top move is arm-driven rather than shoulder-driven"
+      why_it_works: "Gets the hands to work vertically (down) rather than horizontally (out) at the start of the downswing."
+  drills:
+    - name: "Pump drill for transition"
+      youtube_url: ""
+
+- cause_id: early_extension
+  category: swing
+  confidence: plausible
+  description: "Hips thrust toward the ball in the downswing and the spine straightens, forcing arm compensations that leave the face open at impact."
+  indicators:
+    - feature: spine_angle_change_P1_to_P7
+      mode: zscore
+      operator: lt
+      threshold: -1.5
+      confidence_weight: 0.7
+      reasoning: "Primary. Baseline mean -2.3°, stddev 3.8°. z < -1.5 catches spine straightening beyond normal. swing_23 demo was hip-driven not spine-dominant (z=-0.11) — this cause will miss that variant, documented behavior."
+    - feature: hip_vertical_change_P1_to_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.3
+      reasoning: "Corroborating only. Feature is confounded by natural hip rotation but retains some diagnostic value for extreme cases."
+  fix:
+    technical_instruction: "Maintain your spine angle from address through impact. Hips should rotate around the spine, not thrust toward the ball."
+  feels:
+    - feel: "Feel like you're sitting into your trail hip at the top and posting up on your lead leg through impact, keeping your rear against an imaginary wall behind you"
+      best_for: "players whose hips visibly thrust toward the ball"
+      why_it_works: "Anchors the pelvis to a fixed reference (the wall), preventing forward thrust while allowing rotation."
+    - feel: "Feel like your head stays at the same height from start to finish"
+      best_for: "players who can sense their own height change"
+      why_it_works: "Head height is a proxy for spine angle maintenance; keeping it stable prevents the extension."
+  drills:
+    - name: "Chair drill for early extension"
+      youtube_url: ""
+
+- cause_id: reverse_pivot
+  category: swing
+  confidence: weak
+  description: "Weight stays on or moves to the lead side during the backswing, producing a steep, out-to-in downswing that leaves the face open."
+  indicators:
+    - feature: head_displacement_P1_to_P4
+      mode: raw
+      operator: gt
+      threshold: 0.15
+      confidence_weight: 0.4
+      reasoning: "Weak fallback. Baseline mean 0.033, stddev 0.044. Threshold ~+2.7σ. Fires only on extreme cases; swing_24 demo failed direction (see phase2_notes)."
+  fix:
+    technical_instruction: "Load into your trail hip during the backswing so that at the top your weight is on your trail foot and your upper body is stacked over it — not tilted toward the target."
+  feels:
+    - feel: "Feel like your trail pocket moves back and away from the ball during the backswing"
+      best_for: "players who tilt toward the target on the backswing"
+      why_it_works: "Redirects the backswing to a hip-loading pattern by giving the trail hip a specific destination."
+    - feel: "Feel like your lead shoulder moves down and behind the ball at the top"
+      best_for: "players whose upper body is the source of the reverse pivot"
+      why_it_works: "Uses the lead shoulder as a lever to shift the whole torso trail-side."
+  drills:
+    - name: "Trail-foot-only backswing drill"
+      youtube_url: ""

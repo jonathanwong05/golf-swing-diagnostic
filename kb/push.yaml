@@ -1,0 +1,88 @@
+# kb/push.yaml
+#
+# Symptom: ball starts right of target and travels in a straight line
+# right (no significant curve). Face is square to swing path but both
+# aimed right — path is in-to-out and face matches.
+#
+# Three causes in v1: aim-right and ball-position-back dropped
+# (invisible-axis principle / v2 ball detection).
+# Push shares diagnostic ambiguity with pull — depends on user's
+# symptom report being accurate per causes_catalog.
+
+- cause_id: excessive_in_to_out_path
+  category: swing
+  confidence: plausible
+  description: "Downswing gets stuck with the trail elbow dropping too far behind the body while hips over-rotate; the face stays square to that in-to-out path rather than closing to it."
+  indicators:
+    - feature: hip_rotation_proxy_at_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.4
+      reasoning: "Stopgap while trail_elbow_position_at_P4_to_P7 is not built. Distinguished from hook cause 2 (stuck_in_to_out_path) only by user's reported symptom (push vs hook), not by an in-KB indicator. Same feature, threshold, and weight as hook's cause per causes_catalog consistency rule. Weight below fallback floor — awaits trail-elbow feature."
+  fix:
+    technical_instruction: "Sync the arms and hips through the downswing so the trail elbow stays in front of the trail hip rather than dropping behind it. Feel the chest and arms rotating together through impact."
+  feels:
+    - feel: "Feel like your trail elbow stays in front of your body all the way to impact"
+      best_for: "players who feel their arms lagging behind their hips"
+      why_it_works: "Gives the trail elbow a physical destination that prevents it from dropping behind — a positional cue rather than a timing cue."
+    - feel: "Feel like your chest points at the ball a fraction longer through impact"
+      best_for: "players whose hips outrace the upper body"
+      why_it_works: "Slows torso rotation to keep hip-shoulder relationship coordinated instead of hips over-rotating past the arms."
+  drills:
+    - name: "Trail elbow connection drill"
+      youtube_url: ""
+
+- cause_id: early_extension
+  category: swing
+  confidence: plausible
+  description: "Hips thrust toward the ball in the downswing and the spine straightens, forcing arm compensations. When the compensations hold the face square (rather than opening it), the result is a push rather than a slice."
+  indicators:
+    - feature: spine_angle_change_P1_to_P7
+      mode: zscore
+      operator: lt
+      threshold: -1.5
+      confidence_weight: 0.7
+      reasoning: "Primary. Same feature/threshold/weight as slice cause 4, pull cause 2, fat cause 2, thin cause 1, shank cause 1 per causes_catalog consistency rule (5-symptom shared cause)."
+    - feature: hip_vertical_change_P1_to_P7
+      mode: zscore
+      operator: gt
+      threshold: 1.5
+      confidence_weight: 0.3
+      reasoning: "Corroborating only per phase2_notes (rotation-confounded). Same as slice cause 4."
+  fix:
+    technical_instruction: "Maintain your spine angle from address through impact. Hips should rotate around the spine, not thrust toward the ball."
+  feels:
+    - feel: "Feel like you're sitting into your trail hip at the top and posting up on your lead leg through impact, keeping your rear against an imaginary wall behind you"
+      best_for: "players whose hips visibly thrust toward the ball"
+      why_it_works: "Anchors the pelvis to a fixed reference (the wall), preventing forward thrust while allowing rotation."
+    - feel: "Feel like your head stays at the same height from start to finish"
+      best_for: "players who can sense their own height change"
+      why_it_works: "Head height is a proxy for spine angle maintenance; keeping it stable prevents the extension."
+  drills:
+    - name: "Chair drill for early extension"
+      youtube_url: ""
+
+- cause_id: hanging_back
+  category: swing
+  confidence: validated
+  description: "Weight stays on the trail foot through impact; head ends up behind where it was at address, producing an upward-and-rightward path at the strike."
+  indicators:
+    - feature: head_displacement_P1_to_P7_target_axis
+      mode: zscore
+      operator: lt
+      threshold: -1.0
+      confidence_weight: 0.5
+      reasoning: "Primary. Baseline mean -0.024, stddev 0.057. Validated on swing_22 (z=-1.24). Weight 0.5 (just clears floor alone) reflects the modest demo signal — hanging back is detectable but the demo z-score sits at the same magnitude as 2 baseline-tail normal swings (swing_03, swing_07), so single-swing diagnostic power is limited. Depends on 60% consistency filter across multi-swing uploads for reliable diagnosis in production. Was originally paired with weight_distribution_proxy_at_P7 (dropped from v1); no good corroborator remains."
+  fix:
+    technical_instruction: "Shift your weight forward through impact — feel your lead hip and lead shoulder move slightly toward the target as the club approaches the ball, so your head finishes at or slightly ahead of its address position."
+  feels:
+    - feel: "Feel like your chest is over the ball at impact rather than behind it"
+      best_for: "players whose head visibly stays back at impact"
+      why_it_works: "Anchors weight shift to a visible body-part destination — if the chest is over the ball, the weight has moved with it."
+    - feel: "Feel like you're punching the ball with your lead shoulder driving forward"
+      best_for: "players who understand weight shift as a concept but can't feel it"
+      why_it_works: "Uses a linear-motion cue (punching forward) to counteract the rotational-only pattern of hanging-back swings."
+  drills:
+    - name: "Step-through impact drill"
+      youtube_url: ""
