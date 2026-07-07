@@ -58,7 +58,15 @@ src/golf_diagnostic/
 
 ├── diagnosis/
 
-│   └── matcher.py           # (swings, aggregate, kb) → list[RankedCause]
+│   ├── matcher.py           # (swings, aggregate, kb) → list[RankedCause]
+
+│   ├── output_schema.py     # DiagnosticOutput Pydantic model; validate_against_kb()
+
+│   ├── prompt.py            # build_prompt() → PromptPayload (system, messages, tools)
+
+│   └── llm_client.py        # generate_diagnosis() → DiagnosticOutput
+
+├── pipeline.py              # analyze_swings() — full end-to-end orchestration
 
 └── api/                     # Phase 5+ (empty)
 
@@ -757,6 +765,317 @@ in `matcher.py`, (3) documenting in this file.
 
 ---
 
+## diagnosis/output_schema.py
+
+Pydantic models for the LLM's structured output plus a KB-aware
+semantic validator. Same load-time-validation pattern as
+`kb/loader.py`, applied to LLM output instead of YAML.
+
+**Pydantic models**
+
+```python
+class CauseExplanation(BaseModel):
+    cause_id: str            # must be in the ranked list; not a KB free variable
+    feel_id: int             # >= 0; index into the KB cause's feels list
+    technical_explanation: str  # min_length=1; LLM prose citing user's values
+    bridge_to_feel: str      # min_length=1; sets up the feel that follows
+    drill_ids: list[int]     # max_length=2; indices into the cause's drills
+
+class DiagnosticOutput(BaseModel):
+    summary: str                                  # min_length=1
+    primary: CauseExplanation | None              # populated in diagnosis mode
+    secondary: list[CauseExplanation]             # max_length=2; empty in fallback
+    fallback_message: str | None                  # populated in fallback mode
+```
+
+**Model validator** — enforces the "exactly one path" rule: either
+`primary` is populated (with optional `secondary`), OR
+`fallback_message` is populated (with empty `secondary`). Never both,
+never neither.
+
+**DiagnosisValidationError** — subclass of `ValueError`. Raised by
+`validate_against_kb`; distinct from `pydantic.ValidationError`
+(which covers structural failures). Same base type so callers can
+catch `ValueError` for either.
+
+**Semantic validator**
+```python
+validate_against_kb(
+    output: DiagnosticOutput,
+    ranked_cause_ids: list[str],
+    kb: KnowledgeBase,
+    symptom: str,
+) -> None
+```
+- No-op in fallback mode (nothing to validate against causes).
+- Raises `DiagnosisValidationError` on first failure with an
+  informative message suitable for feeding into an LLM retry.
+- Checks: cited `cause_id` is in `ranked_cause_ids`; no duplicate
+  `cause_id` across primary + secondary; `feel_id` is in range for
+  each cited cause; `drill_ids` are in range for each cited cause
+  (and empty when the cause has 0 drills).
+
+**Anti-hallucination boundary**: any `cause_id` the LLM emits must
+have been in the ranked list surfaced to it in the prompt. This is
+the mechanism that prevents the LLM from inventing causes from
+training data.
+
+**Tool schema generation**: `DiagnosticOutput.model_json_schema()`
+produces the JSON schema used as the Anthropic tool's `input_schema`.
+Field descriptions in the Pydantic model appear inline in the tool
+schema as prompt guidance for the LLM. Single source of truth: edit
+a field's description here, and the LLM's prompt updates on the
+next call.
+
+---
+
+## diagnosis/prompt.py
+
+Constructs the Anthropic-formatted request payload — system prompt,
+user message, tool schema, tool_choice — for one diagnostic LLM
+call.
+
+**Constants**
+- `NORMAL_TOP_N = 3` — max causes surfaced in diagnosis mode
+- `FALLBACK_TOP_N = 5` — max causes surfaced in fallback mode
+- `Mode = Literal["diagnosis", "fallback"]`
+
+**PromptPayload dataclass**
+```python
+@dataclass(frozen=True)
+class PromptPayload:
+    system: list[dict[str, Any]]     # content blocks; stable prefix cache-marked
+    messages: list[dict[str, Any]]   # single dynamic user turn
+    tools: list[dict[str, Any]]      # emit_diagnosis tool; cache-marked
+    tool_choice: dict[str, Any]      # forced to emit_diagnosis
+```
+
+Fields map 1:1 to `anthropic.messages.create()` parameters — unpack
+into the API call.
+
+**Public function**
+```python
+build_prompt(
+    symptom: str,
+    ranked: list[RankedCause],
+    kb: KnowledgeBase,
+    *,
+    n_swings: int,
+    mode: Mode,
+    user_context: str = "",
+) -> PromptPayload
+```
+
+**Cause selection by mode**
+- `mode="diagnosis"`: only causes with score >=
+  `FALLBACK_SCORE_FLOOR` (0.5), top `NORMAL_TOP_N`. Sub-floor causes
+  are not diagnostic candidates.
+- `mode="fallback"`: top `FALLBACK_TOP_N` regardless of score. The
+  LLM needs to reference what came close but didn't clear the
+  threshold.
+
+**Invariant**: `mode="diagnosis"` with no cause clearing the floor
+raises `ValueError`. Caller should have detected via
+`should_fall_back(ranked)` and used `mode="fallback"`. Fails loud
+rather than send the LLM a contradictory prompt.
+
+**Indicator rendering** — critical detail. `_format_indicator_line`
+reconstructs the mean raw feature value from a z-score using
+`raw = z * baseline.stddev + baseline.mean`, so the LLM can cite
+the raw measurement (in coaching units where applicable) rather
+than a z-score. Both are shown; the system prompt routes citation
+behavior:
+- Real coaching units (degrees, seconds): LLM cites the number
+  directly
+- Proxy features (`*_proxy`, `*_target_axis`, `*_displacement`,
+  `*_vertical_change`): LLM describes qualitatively; never quotes
+  the raw number or the z-score
+
+**Prompt caching**
+- System block: `cache_control: {"type": "ephemeral"}`
+- Tool schema: `cache_control: {"type": "ephemeral"}`
+- User message: NOT cached (dynamic per call)
+
+Empirical: cache_read matches cache_create across calls within the
+5-minute TTL window. Effective per-call cost with cache hit
+~$0.011; uncached first call ~$0.022.
+
+**System prompt structure** (5300+ chars, stable):
+1. Role and pipeline context
+2. Output rules (tool-use only, no cause invention, no feel
+   paraphrasing)
+3. Voice — cite coaching units, describe proxies qualitatively
+4. Feel selection rules (use `best_for` and `why_it_works` notes;
+   consider user context)
+5. Drill selection rules (0-2 per cause; empty is fine)
+6. Symptom-specific framing:
+   - `inconsistent_contact` — "here are where your swing varies
+     most, ranked by magnitude" (variance frame, not fault frame);
+     process-oriented feels
+   - `shank` — brief acknowledgment of the tension/confidence
+     component alongside the mechanical cause
+   - all other symptoms — standard cause-ranked diagnostic frame
+7. Fallback-mode rules (cite closest cause; mention grip /
+   alignment / weight distribution as invisible-axis blind spots;
+   suggest face-on filming, more swings, clearer example)
+
+---
+
+## diagnosis/llm_client.py
+
+Anthropic messages API wrapper. Handles mode auto-detection,
+forced tool use, response parsing, and one retry on validation
+failure.
+
+**Constants**
+- `DEFAULT_MODEL = "claude-sonnet-4-6"` — matches project spec.
+  Swap to newer via constant or `model=` argument. Sonnet 5 uses
+  adaptive thinking by default which adds token cost/latency for
+  structured tool-use; 4.6 is a cleaner fit here.
+- `DEFAULT_MAX_TOKENS = 2048` — output budget. Realistic output is
+  500-1000 tokens; 2048 leaves headroom without paying for runaway.
+- `DEFAULT_MAX_RETRIES = 1` — total attempts = `max_retries + 1`.
+  One shot to self-correct, then raise loud. Looping is worse than
+  surfacing the bug.
+
+**Public function**
+```python
+generate_diagnosis(
+    symptom: str,
+    ranked: list[RankedCause],
+    kb: KnowledgeBase,
+    *,
+    n_swings: int,
+    user_context: str = "",
+    client: Anthropic | None = None,       # defaults to Anthropic()
+    model: str = DEFAULT_MODEL,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    verbose: bool = False,                 # stderr logging per attempt
+) -> DiagnosticOutput
+```
+
+**Behavior**
+1. `mode = "fallback" if should_fall_back(ranked) else "diagnosis"`
+2. `payload = build_prompt(...)` with that mode
+3. Loop up to `max_retries + 1` times:
+   a. Call `client.messages.create(**payload)` with cache_control
+      already set by build_prompt
+   b. Extract the tool_use block from `response.content`
+   c. Parse tool input as `DiagnosticOutput` (Pydantic)
+   d. `validate_against_kb(...)` for semantic check
+   e. On success: return
+   f. On `ValidationError` or `DiagnosisValidationError`: append the
+      malformed assistant turn plus a `tool_result` with
+      `is_error=True` and the error message to messages, retry
+4. If retries exhaust: raise `DiagnosisValidationError` naming the
+   last error
+
+**Retry conversation format** (semantically correct Anthropic
+protocol, not plain-text scolding):
+```python
+messages = [
+    {"role": "user", "content": original_user_msg},
+    {"role": "assistant", "content": [malformed_tool_use_block]},
+    {"role": "user", "content": [{
+        "type": "tool_result",
+        "tool_use_id": tool_use.id,
+        "content": "Your emit_diagnosis call failed validation: ...",
+        "is_error": True,
+    }]},
+]
+```
+
+**Anti-hallucination scope**: `ranked_ids` passed to
+`validate_against_kb` is the FULL ranked list, not the
+mode-filtered subset. This lets the LLM legitimately cite a
+lower-scored cause as secondary if it wants to; only truly invented
+`cause_id`s are rejected.
+
+**Verbose logging** (to stderr, prefixed `[generate_diagnosis]`):
+mode + n_ranked at entry; per-attempt API call → stop_reason +
+token usage (input, output, cache_read, cache_create); validation
+pass/fail per attempt.
+
+**Failure modes**
+- `DiagnosisValidationError` — output failed both attempts. Message
+  names the last error.
+- `RuntimeError` — API response contained no tool_use block despite
+  forced tool_choice. Defensive; should not occur.
+- `anthropic.*` errors (auth, rate limit, network) — propagate.
+
+---
+
+## pipeline.py
+
+End-to-end orchestration: videos in, `AnalysisResult` out. This is
+the module Phase 5's FastAPI route wraps.
+
+**AnalysisResult dataclass**
+```python
+@dataclass(frozen=True)
+class AnalysisResult:
+    diagnosis: DiagnosticOutput
+    annotated_video_paths: list[Path]     # empty when annotated_output_dir=None
+    ranked_causes: list[RankedCause]      # for debug / observability
+```
+
+**Public function**
+```python
+analyze_swings(
+    video_paths: list[Path],
+    symptom: str,
+    kb: KnowledgeBase,
+    *,
+    user_context: str = "",
+    handedness: Handedness = Handedness.RIGHT_HANDED,
+    cache_dir: Path = Path("data/processed"),
+    annotated_output_dir: Path | None = None,
+    force_extract: bool = False,
+    client: Anthropic | None = None,
+    verbose: bool = False,
+) -> AnalysisResult
+```
+
+**Composition (no new logic; pure orchestration)**
+1. Input validation — non-empty paths, supported symptom, symptom
+   loaded in KB, all video files exist
+2. Eager Anthropic client init (fail fast on missing API key before
+   pose extraction runs)
+3. Per swing:
+   a. Load pose from cache (`{cache_dir}/{stem}_pose.npz`) or
+      extract fresh + save
+   b. `segment_swing()` — raises `ValueError` if segmentation fails
+   c. `compute_swing_features()` via orchestrator
+   d. Optional: `render_segmented_pose_video()` to annotated dir
+4. `aggregate(per_swing_features)` — cross-swing means/stddevs
+5. `match_symptom(...)` — ranked causes
+6. `generate_diagnosis(...)` — LLM output
+
+**KB is passed in, not loaded internally**. Phase 5's API loads KB
+once at startup and injects into every request. Same pattern as
+`client` — dependency injection for testability.
+
+**Cache dir semantics**
+- Dev / test: `data/processed/` (default) — persists NPZs across runs
+- Phase 5 production: caller passes a per-session temp dir
+
+**Annotated output semantics**
+- `annotated_output_dir=None`: skip video rendering (faster;
+  `AnalysisResult.annotated_video_paths` is empty)
+- Set: writes `{stem}_annotated.mp4` per input video; returns paths
+
+**Failure model** — raises on any per-swing failure. No graceful
+skipping in v1. Phase 5 can add per-video tolerance ("swing 3 of 4
+failed, using the other 3") once real user data shows the need.
+
+**Verbose logging** (stderr, prefixed `[pipeline]`): per-swing
+stage progress including pose stats, checkpoint frame numbers with
+confidences, feature NaN count, matcher top score. `generate_diagnosis`
+adds its own `[generate_diagnosis]` lines beneath.
+
+---
+
 ## Data layout
 
 data/
@@ -975,6 +1294,58 @@ expected feature directions. See phase2_notes for validation-result
 categories (validated / weak-signal / feature-intrinsic / demo-
 execution-gap / structural-only).
 python scripts/validate_features.py
+
+### `scripts/test_output_schema.py`
+Structural + semantic validation tests for
+`diagnosis/output_schema.py`. Covers Pydantic field constraints
+(negative feel_id, empty strings, over-long lists), the
+exactly-one-path model validator (primary+fallback both/neither,
+non-empty secondary in fallback), and `validate_against_kb`
+failures (hallucinated cause_id, cause_id not in ranked list,
+duplicate causes, out-of-range feel_id / drill_ids).
+python scripts/test_output_schema.py
+
+### `scripts/test_prompt.py`
+Sanity script for `diagnosis/prompt.py`. Builds prompts from
+manually-constructed RankedCause fixtures and prints them for
+eyeball inspection. Does NOT hit the Anthropic API. Three cases:
+- Case A: diagnosis mode with mixed scores — verifies sub-floor
+  causes filtered out
+- Case B: fallback mode with all sub-floor scores — verifies
+  causes surfaced for LLM to reference
+- Case C: sub-floor list in diagnosis mode — verifies the invariant
+  fires (`ValueError`)
+
+Also asserts tool schema shape: name is `emit_diagnosis`,
+top-level fields are `[summary, primary, secondary, fallback_message]`,
+`cache_control` set on both system block and tool.
+python scripts/test_prompt.py
+
+### `scripts/test_diagnosis.py`
+Spike test that ACTUALLY hits the Anthropic API. Requires
+`ANTHROPIC_API_KEY` in env. Two cases using fixture-based
+RankedCause (no pose pipeline):
+- Case A: diagnosis mode with cupped_lead_wrist_at_top at score
+  1.40 — expects primary CauseExplanation citing the cupped cause
+- Case B: fallback mode with all sub-floor scores — expects
+  fallback_message referencing invisible-axis blind spots (grip /
+  alignment / weight / face-on)
+
+Prints full DiagnosticOutput with feel_id resolved back to KB feel
+text. Estimated cost: ~$0.03 per run.
+python scripts/test_diagnosis.py
+
+### `scripts/test_pipeline.py`
+End-to-end pipeline test on REAL video data. Uses cached pose NPZs
+(or re-extracts if missing). Two cases:
+- Case A: swing_16 alone → diagnosis mode expected (cupped
+  demo, score 1.40 on cupped_lead_wrist_at_top)
+- Case B: swing_16 + swing_09 → fallback expected (60% consistency
+  filter suppresses indicators that don't fire on both swings —
+  design demonstration, not bug)
+
+Estimated cost: ~$0.03 per run.
+python scripts/test_pipeline.py
 
 ---
 
