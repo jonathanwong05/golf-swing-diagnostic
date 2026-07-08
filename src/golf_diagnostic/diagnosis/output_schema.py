@@ -170,7 +170,7 @@ def validate_against_kb(
     output: DiagnosticOutput,
     ranked_cause_ids: list[str],
     kb: KnowledgeBase,
-    symptom: str,
+    symptom: str | None,
 ) -> None:
     """
     Confirm every cause_id in the output was in the ranked list, and
@@ -194,6 +194,10 @@ def validate_against_kb(
         drills lists for each cited cause.
     symptom
         The symptom being diagnosed. Used to scope the KB lookup.
+        Pass ``None`` for Phase 5.1 general analysis mode; the
+        validator then looks up causes via ``collect_unique_causes``
+        so ``feel_id`` and ``drill_ids`` are validated against the
+        pooled Causes the LLM saw (not per-symptom subsets).
     """
     all_explanations: list[tuple[str, CauseExplanation]] = []
     if output.primary is not None:
@@ -206,7 +210,20 @@ def validate_against_kb(
         return
 
     ranked_set = set(ranked_cause_ids)
-    causes_by_id = {c.cause_id: c for c in kb.get_causes(symptom)}
+
+    if symptom is None:
+        # General mode: causes are pooled across all loaded symptoms.
+        # Use the same pooling logic the matcher used to build the
+        # candidate list, so we validate against the exact Cause
+        # objects (with pooled feels/drills) the LLM saw.
+        #
+        # Imported locally to avoid a top-level dependency on the
+        # matcher module — output_schema is otherwise pure Pydantic
+        # + KB, and this branch is only used in general mode.
+        from golf_diagnostic.diagnosis.matcher import collect_unique_causes
+        causes_by_id = {c.cause_id: c for c in collect_unique_causes(kb)}
+    else:
+        causes_by_id = {c.cause_id: c for c in kb.get_causes(symptom)}
 
     seen_ids: set[str] = set()
     for path, exp in all_explanations:
@@ -224,8 +241,9 @@ def validate_against_kb(
             )
         seen_ids.add(exp.cause_id)
 
-        # cause_id is in ranked_set, which is a subset of causes for
-        # this symptom, so the KB lookup cannot miss.
+        # cause_id is in ranked_set, which is a subset of the causes
+        # available for this analysis (symptom-scoped or pooled), so
+        # the KB lookup cannot miss.
         cause = causes_by_id[exp.cause_id]
 
         if exp.feel_id >= len(cause.feels):

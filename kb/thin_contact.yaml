@@ -25,7 +25,7 @@
       confidence_weight: 0.3
       reasoning: "Corroborating only per phase2_notes (rotation-confounded). Same as slice cause 4."
   fix:
-    technical_instruction: "Maintain your spine angle from address through impact. Hips should rotate around the spine, not thrust toward the ball."
+    technical_instruction: "Maintain your spine angle from address through impact. Hips should rotate around the spine, not thrust toward the ball. Keep your rear against an imaginary wall behind you through the strike."
   feels:
     - feel: "Feel like you're sitting into your trail hip at the top and posting up on your lead leg through impact, keeping your rear against an imaginary wall behind you"
       best_for: "players whose hips visibly thrust toward the ball"

@@ -13,6 +13,10 @@ Wraps the Anthropic messages API with:
 Public API:
     generate_diagnosis(symptom, ranked, kb, *, n_swings, ...) -> DiagnosticOutput
 
+``symptom`` is nullable (Phase 5.1). Pass ``None`` when the user has
+not reported a specific ball-flight symptom; the general-mode prompt
+and general-mode validation lookup are applied automatically.
+
 Failure modes:
 - API errors (network, auth, rate limit) propagate as anthropic.*
   exceptions — not caught here.
@@ -110,7 +114,7 @@ def _serialize_assistant_content(response_content) -> list[dict[str, Any]]:
 
 
 def generate_diagnosis(
-    symptom: str,
+    symptom: str | None,
     ranked: list[RankedCause],
     kb: KnowledgeBase,
     *,
@@ -133,11 +137,15 @@ def generate_diagnosis(
     Parameters
     ----------
     symptom
-        User-reported symptom (must be one of the 9 KB symptoms).
+        User-reported symptom (one of the 9 KB symptoms), or ``None``
+        for Phase 5.1 general analysis mode. When ``None``, the
+        prompt reframes to observational voice and the validation
+        lookup uses pooled Causes across all loaded symptoms.
     ranked
-        Full ranked-cause list from matcher.match_symptom(). Do not
-        pre-truncate; internal filtering picks the right subset per
-        mode.
+        Full ranked-cause list from either ``matcher.match_symptom``
+        (symptom is a string) or ``matcher.match_general`` (symptom
+        is None). Do not pre-truncate; internal filtering picks the
+        right subset per mode.
     kb
         Loaded KnowledgeBase. Used for semantic validation.
     n_swings

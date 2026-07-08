@@ -9,16 +9,20 @@ needed for an Anthropic messages API call:
 - tool_choice (forced use of the emit_diagnosis tool)
 
 The system prompt covers all symptoms and both modes (diagnosis and
-fallback) in a single stable text so prompt caching keeps hitting.
-Symptom-specific and mode-specific instructions are baked in; the
-LLM applies the relevant branch based on what it sees in the user
-message.
+fallback), symptom-driven and general analysis, in a single stable
+text so prompt caching keeps hitting. Symptom-specific, mode-specific,
+and analysis-type-specific instructions are baked in; the LLM applies
+the relevant branch based on what it sees in the user message.
 
 Public API:
     build_prompt(symptom, ranked, kb, user_context, mode) -> PromptPayload
 
+``symptom`` is nullable (Phase 5.1): pass None for general analysis
+mode when the user has not reported a specific ball-flight symptom.
+
 Companion module: diagnosis.output_schema (defines DiagnosticOutput).
-Companion module: diagnosis.matcher (produces the ranked list).
+Companion module: diagnosis.matcher (produces the ranked list via
+    match_symptom or match_general).
 """
 
 from __future__ import annotations
@@ -41,7 +45,8 @@ from golf_diagnostic.kb.loader import KnowledgeBase
 # Number of ranked causes surfaced to the LLM in each mode. Normal
 # mode filters to score >= FALLBACK_SCORE_FLOOR first; fallback mode
 # includes sub-floor causes because the LLM needs to reference what
-# came close but didn't cross the threshold.
+# came close but didn't cross the threshold. Same limits apply in
+# both symptom-driven and general analysis modes.
 NORMAL_TOP_N = 3
 FALLBACK_TOP_N = 5
 
@@ -83,9 +88,11 @@ _SYSTEM_PROMPT = """You are the diagnostic reasoning layer of a golf swing analy
 
 ## What you are working with
 
-A user has uploaded 3-5 down-the-line iron swing videos and reported a ball-flight symptom they're struggling with (slice, hook, pull, push, fat contact, thin contact, lack of distance with solid contact, inconsistent contact, or shank). Upstream layers extracted pose landmarks, segmented each swing into checkpoints (P1 address, P4 top of backswing, P7 impact, P10 finish), computed biomechanical features per swing, and matched them against a knowledge base of causes tuned against a validated baseline of normal swings.
+A user has uploaded 3-5 down-the-line iron swing videos. Either they reported a specific ball-flight symptom they're struggling with (slice, hook, pull, push, fat contact, thin contact, lack of distance with solid contact, inconsistent contact, or shank) — in which case you explain why they're producing that miss — or they requested a general analysis without specifying a symptom, in which case you identify the most notable patterns in their swing. The user message tells you which mode applies.
 
-You receive a symptom, a ranked list of candidate causes (with their KB descriptions, the specific indicators that fired, and the user's actual measured feature values), and optionally the user's free-text context. Your job is to translate this structured output into coaching-quality prose the user will read.
+Upstream layers extracted pose landmarks, segmented each swing into checkpoints (P1 address, P4 top of backswing, P7 impact, P10 finish), computed biomechanical features per swing, and matched them against a knowledge base of causes tuned against a validated baseline of normal swings.
+
+You receive an analysis type (symptom-driven or general) with the reported symptom if any, a ranked list of candidate causes (with their KB descriptions, the specific indicators that fired, and the user's actual measured feature values), and optionally the user's free-text context. Your job is to translate this structured output into coaching-quality prose the user will read.
 
 ## What you MUST and MUST NOT do
 
@@ -107,13 +114,13 @@ Cite numbers when they're in real coaching units the user recognizes — angles 
 
 ## Selecting a feel
 
-Each KB cause offers 1-3 feels, each with a `best_for` note (which kind of player it lands with) and a `why_it_works` note (what mechanism the feel triggers). Use these to pick the feel that best fits (a) which indicators fired most strongly for this user and (b) anything the user's free-text context tells you about their prior coaching or self-awareness. If the user says "I've been told about early extension for years and can't fix it," pick a feel whose framing differs from what they've already heard.
+Each KB cause offers 1-3 feels (or more in general analysis mode, where feels are pooled across the symptom files that share the cause), each with a `best_for` note (which kind of player it lands with) and a `why_it_works` note (what mechanism the feel triggers). Use these to pick the feel that best fits (a) which indicators fired most strongly for this user and (b) anything the user's free-text context tells you about their prior coaching or self-awareness. If the user says "I've been told about early extension for years and can't fix it," pick a feel whose framing differs from what they've already heard.
 
 ## Selecting drills
 
 Include 0-2 drill_ids per cause. Pick zero if none of the drills line up cleanly with the selected feel; pick one or two if they reinforce it. Empty is a valid choice — do not pad.
 
-## Symptom-specific framing
+## Symptom-specific framing (symptom-driven mode only)
 
 **inconsistent_contact:** the frame is "here are where your swing varies most, ranked by magnitude" — NOT "here's what's wrong." Each CauseExplanation frames a variance source (your setup varies, your tempo varies, your wrist at impact varies) rather than a mechanical fault. Feels should be process-oriented: pre-shot routine, tempo repetition, setup checklist — not motion corrections.
 
@@ -121,14 +128,45 @@ Include 0-2 drill_ids per cause. Pick zero if none of the drills line up cleanly
 
 **all other symptoms:** standard cause-ranked diagnostic frame.
 
+These symptom-specific framings do NOT apply in general analysis mode — there's no symptom to trigger them.
+
+## Symptom-driven vs general analysis
+
+The user message header will read either **"Analysis type: symptom-driven"** or **"Analysis type: general"** — key on that string to decide which branch to apply.
+
+**Symptom-driven mode.** The user reported a specific ball-flight symptom. Your job is to explain WHY they're producing that miss.
+- The technical_explanation connects features to the ball flight ("Your ball is starting left and curving right because your face is open at impact — your trail wrist was extended 52° at the top on every swing").
+- The summary anchors on the reported miss ("The dominant cause of your slice is...").
+- Fallback messages reference the reported symptom ("You reported a slice, but the tool couldn't confirm a cause with confidence...").
+
+**General analysis mode.** The user did NOT report a specific symptom. Your job is to identify the most notable patterns in their swing, framed as observations.
+- Do NOT invent a symptom the user didn't report. You don't know what ball flight they're producing.
+- The technical_explanation describes patterns in coaching terms WITHOUT connecting them to a specific miss ("The most notable pattern in your swing is a cupped position at the top of the backswing — your trail wrist was extended 52°").
+- The summary is an assessment ("Two patterns stand out in your swing"), not a diagnosis ("You're slicing because...").
+- Symptom-specific framings (inconsistent_contact reframe, shank psychological caveat) do NOT apply.
+- If the user's free-text context mentions a specific miss ("I've been slicing lately"), you may factor that into feel selection, but do NOT shift the technical_explanation into causal framing. The user asked for a general assessment; give them that.
+
+Concrete example of the voice difference — given the same underlying evidence (`cupped_lead_wrist_at_top` scoring 1.4 on a swing where the trail wrist was extended 52° at the top):
+- Symptom-driven (symptom=slice): "Your ball is starting left and curving right because your face is open at impact. Your trail wrist was extended 52° at the top on every swing — that's a very open position that carries straight through to impact."
+- General analysis: "The most notable pattern in your swing is a cupped position at the top of the backswing. Your trail wrist was extended 52° at the top on every swing — a clearly open position at the top."
+
+Same evidence, same numbers, no ball-flight assertion in the general version.
+
 ## Diagnosis mode vs fallback mode
 
 The user message tells you which mode you're in. In **diagnosis mode**, populate `summary`, `primary`, and optionally `secondary` (up to 2). Leave `fallback_message` null.
 
-In **fallback mode**, populate `summary` and `fallback_message`. Leave `primary` null and `secondary` empty. The fallback message must:
+In **fallback mode**, populate `summary` and `fallback_message`. Leave `primary` null and `secondary` empty. Which fallback framing to use depends on analysis type:
+
+**Symptom-driven fallback** (user reported a symptom, but nothing clearly diagnoses it):
 - Reference the closest cause from the ranked list — the one that came nearest to clearing the diagnostic threshold — and describe what came close in coaching terms (e.g., "your shoulders were mildly open at impact but it didn't fire consistently enough across your swings"). Do this without introducing a diagnosis; frame it as "close but not confirmed."
-- Mention that down-the-line video cannot see these things, any of which could be contributing: grip strength, alignment relative to the target line, weight distribution/ground use. Reference specifically the one(s) most plausible for the reported symptom.
+- Mention that down-the-line video cannot see: grip strength, alignment relative to the target line, weight distribution/ground use. Reference specifically the one(s) most plausible for the reported symptom.
 - Suggest next steps: filming face-on for a clearer read; uploading more swings; re-filming with a clearer example of the miss.
+
+**General-mode fallback** (no symptom reported, and nothing stood out from typical):
+- Cite the closest observations from the ranked list in coaching terms — the one or two patterns that came nearest to standing out, described without inventing a diagnosis.
+- Frame the outcome as one of two possibilities: (a) their swing is close to neutral for the features this tool can measure, or (b) the specific issue lies in an area invisible from down-the-line video — grip strength, alignment, or weight distribution.
+- Suggest: if they have a specific ball-flight symptom in mind, reporting it will let the tool anchor the analysis toward that miss; face-on filming (planned for future versions) would help with the invisible-axis issues.
 
 Do not manufacture confidence you don't have. Admitting uncertainty is better than inventing a diagnosis."""
 
@@ -229,6 +267,9 @@ def _select_ranked(ranked: list[RankedCause], mode: Mode) -> list[RankedCause]:
       Sub-floor causes are not diagnostic candidates.
     - fallback: top N regardless of score, so the LLM can reference
       what came close.
+
+    Same behavior in symptom-driven and general modes — the analysis
+    type only affects framing, not which causes are surfaced.
     """
     if mode == "diagnosis":
         above_floor = [rc for rc in ranked if rc.score >= FALLBACK_SCORE_FLOOR]
@@ -237,7 +278,7 @@ def _select_ranked(ranked: list[RankedCause], mode: Mode) -> list[RankedCause]:
 
 
 def _build_user_message(
-    symptom: str,
+    symptom: str | None,
     ranked_selected: list[RankedCause],
     kb: KnowledgeBase,
     user_context: str,
@@ -247,7 +288,14 @@ def _build_user_message(
     lines: list[str] = []
     lines.append(f"MODE: {mode}")
     lines.append("")
-    lines.append(f"The user reports: **{symptom}**")
+
+    # Analysis-type header. This is what the system prompt keys off
+    # to decide between symptom-driven vs general voice.
+    if symptom is None:
+        lines.append("**Analysis type: general** (no specific symptom reported)")
+    else:
+        lines.append("**Analysis type: symptom-driven**")
+        lines.append(f"The user reports: **{symptom}**")
     lines.append(f"Number of swings analyzed: {n_swings}")
     lines.append("")
 
@@ -314,7 +362,7 @@ def _build_tool_schema() -> dict[str, Any]:
 
 
 def build_prompt(
-    symptom: str,
+    symptom: str | None,
     ranked: list[RankedCause],
     kb: KnowledgeBase,
     *,
@@ -328,11 +376,14 @@ def build_prompt(
     Parameters
     ----------
     symptom
-        The user-reported symptom (must be a supported KB symptom).
+        The user-reported symptom (must be a supported KB symptom),
+        or ``None`` for Phase 5.1 general analysis mode where the
+        user has not reported a specific ball-flight symptom.
     ranked
-        The full ranked list from matcher.match_symptom(). This
-        function selects the top-N appropriate for the mode; do not
-        pre-truncate.
+        The full ranked list from ``matcher.match_symptom()`` (when
+        ``symptom`` is set) or ``matcher.match_general()`` (when
+        ``symptom`` is ``None``). This function selects the top-N
+        appropriate for the mode; do not pre-truncate.
     kb
         The loaded KnowledgeBase. Its baseline is used to reconstruct
         raw feature values from z-scores for zscore-mode indicators
@@ -343,8 +394,11 @@ def build_prompt(
         four swings."
     mode
         "diagnosis" or "fallback". The caller determines this by
-        checking matcher.should_fall_back(ranked); build_prompt does
-        not auto-detect. Keeps the function a pure input→output map.
+        checking ``matcher.should_fall_back(ranked)``; build_prompt
+        does not auto-detect. Keeps the function a pure input→output
+        map. The mode axis is orthogonal to the symptom axis: a call
+        can be (diagnosis, symptom), (diagnosis, None), (fallback,
+        symptom), or (fallback, None).
     user_context
         Optional free-text from the user. Rendered inside
         <user_context> tags. Empty string is fine.
@@ -352,7 +406,7 @@ def build_prompt(
     Returns
     -------
     PromptPayload
-        Ready to unpack into anthropic.messages.create(**payload_dict).
+        Ready to unpack into ``anthropic.messages.create(**payload_dict)``.
     """
     selected = _select_ranked(ranked, mode)
 
@@ -360,7 +414,8 @@ def build_prompt(
     # cause. If nothing qualifies, the caller (llm_client.py) should
     # have detected that via should_fall_back(ranked) and called with
     # mode="fallback" instead. Fail loud rather than send the LLM a
-    # self-contradicting prompt.
+    # self-contradicting prompt. Applies to both symptom-driven and
+    # general analysis modes.
     if mode == "diagnosis" and not selected:
         n_ranked = len(ranked)
         top_score = ranked[0].score if ranked else 0.0

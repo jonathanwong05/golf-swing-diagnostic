@@ -1,11 +1,11 @@
 """
 End-to-end analysis pipeline.
 
-Given N video paths, a symptom, and a loaded KB, produces a
-DiagnosticOutput. This is the module that Phase 5's FastAPI route
-will call — everything above this line is upload / temp-file /
-session management; everything below this module is pipeline
-internals.
+Given N video paths, a symptom (or None for general analysis mode),
+and a loaded KB, produces a DiagnosticOutput. This is the module
+that Phase 5's FastAPI route calls — everything above this line is
+upload / temp-file / session management; everything below this
+module is pipeline internals.
 
 Composition, not new logic:
     extract_pose      → PoseData          (with npz cache)
@@ -13,11 +13,16 @@ Composition, not new logic:
     compute_swing_features
                       → SwingFeatures     (per swing)
     aggregate         → AggregatedFeatures (cross-swing)
-    match_symptom     → list[RankedCause] (ranked causes)
+    match_symptom     → list[RankedCause] (ranked causes, symptom mode)
+    match_general     → list[RankedCause] (ranked causes, general mode)
     generate_diagnosis→ DiagnosticOutput  (LLM output)
 
 Public API:
     analyze_swings(video_paths, symptom, kb, *, ...) -> AnalysisResult
+
+``symptom`` is nullable (Phase 5.1). Pass ``None`` for general
+analysis mode when the user has not reported a specific ball-flight
+symptom; the matcher and LLM layers are routed accordingly.
 
 The KB is passed in rather than loaded here. In Phase 5 the API
 loads the KB once at startup and injects it into every request;
@@ -40,7 +45,11 @@ from pathlib import Path
 from anthropic import Anthropic
 
 from golf_diagnostic.diagnosis.llm_client import generate_diagnosis
-from golf_diagnostic.diagnosis.matcher import RankedCause, match_symptom
+from golf_diagnostic.diagnosis.matcher import (
+    RankedCause,
+    match_general,
+    match_symptom,
+)
 from golf_diagnostic.diagnosis.output_schema import DiagnosticOutput
 from golf_diagnostic.features.landmarks import Handedness
 from golf_diagnostic.features.orchestrator import compute_swing_features
@@ -74,9 +83,9 @@ class AnalysisResult:
       one per input video, in the same order. Empty list when
       annotated_output_dir was None (which is the case for pipeline
       tests that don't need the videos rendered).
-    - ranked_causes: the matcher's ranked output for the reported
-      symptom. Not needed by the frontend, but useful for debug
-      dashboards and for logging/observability in Phase 5.
+    - ranked_causes: the matcher's ranked output. Not needed by the
+      frontend, but useful for debug dashboards and for
+      logging/observability in Phase 5.
     """
 
     diagnosis: DiagnosticOutput
@@ -101,24 +110,34 @@ def _seg_to_checkpoints(seg: SwingSegmentation) -> dict[str, int]:
 
 def _validate_inputs(
     video_paths: list[Path],
-    symptom: str,
+    symptom: str | None,
     kb: KnowledgeBase,
 ) -> None:
     """Fail fast on obviously invalid inputs before any work is done."""
     if not video_paths:
         raise ValueError("video_paths is empty; at least one video is required.")
 
-    if symptom not in SUPPORTED_SYMPTOMS:
-        raise ValueError(
-            f"symptom {symptom!r} is not supported. Must be one of "
-            f"{sorted(SUPPORTED_SYMPTOMS)}."
-        )
-
-    if not kb.get_causes(symptom):
-        raise ValueError(
-            f"KB has no loaded causes for symptom {symptom!r}. Check "
-            f"that kb/{symptom}.yaml exists and loaded cleanly."
-        )
+    if symptom is None:
+        # General analysis mode. The only meaningful KB check is that
+        # SOME symptoms are loaded — otherwise the cause pool is empty
+        # and we can't diagnose anything. Individual symptom-scoped
+        # checks don't apply.
+        if not kb.loaded_symptoms():
+            raise ValueError(
+                "KB has no loaded symptoms; general analysis has no "
+                "cause pool to draw from."
+            )
+    else:
+        if symptom not in SUPPORTED_SYMPTOMS:
+            raise ValueError(
+                f"symptom {symptom!r} is not supported. Must be one of "
+                f"{sorted(SUPPORTED_SYMPTOMS)}, or None for general analysis."
+            )
+        if not kb.get_causes(symptom):
+            raise ValueError(
+                f"KB has no loaded causes for symptom {symptom!r}. Check "
+                f"that kb/{symptom}.yaml exists and loaded cleanly."
+            )
 
     missing = [p for p in video_paths if not p.exists()]
     if missing:
@@ -208,7 +227,7 @@ def _process_one_swing(
 
 def analyze_swings(
     video_paths: list[Path],
-    symptom: str,
+    symptom: str | None,
     kb: KnowledgeBase,
     *,
     user_context: str = "",
@@ -230,7 +249,13 @@ def analyze_swings(
         The caller (Phase 5 API) is responsible for coercing uploaded
         bytes into files and passing their paths here.
     symptom
-        User-reported symptom. Must be one of the 9 KB symptoms.
+        User-reported symptom (one of the 9 KB symptoms), or ``None``
+        for Phase 5.1 general analysis mode. When ``None``:
+        - matcher routes through ``match_general`` (pooled causes
+          across all symptoms)
+        - LLM prompt reframes to observational voice
+        - LLM validation uses pooled Causes for feel_id / drill_id
+          index checks
     kb
         Loaded KnowledgeBase. Passed in so callers can share one
         instance across requests. Load once with kb.loader.load_kb().
@@ -267,7 +292,8 @@ def analyze_swings(
     ------
     ValueError
         On empty video_paths, unsupported symptom, unloaded KB
-        symptom, or segmentation failure on any swing.
+        symptom (or empty KB in general mode), or segmentation
+        failure on any swing.
     FileNotFoundError
         If any video path does not exist.
     DiagnosisValidationError
@@ -285,8 +311,9 @@ def analyze_swings(
     if annotated_output_dir is not None:
         annotated_output_dir.mkdir(parents=True, exist_ok=True)
 
+    analysis_label = "general analysis" if symptom is None else f"symptom={symptom!r}"
     _log(
-        f"analyzing {len(video_paths)} swing(s) for symptom={symptom!r}; "
+        f"analyzing {len(video_paths)} swing(s) for {analysis_label}; "
         f"cache_dir={cache_dir} "
         f"annotated_output_dir={annotated_output_dir}",
         verbose,
@@ -316,19 +343,25 @@ def analyze_swings(
     agg = aggregate(per_swing_features)
     _log(f"aggregated features across {agg.n_swings} swing(s)", verbose)
 
-    # --- KB matching ---
-    ranked = match_symptom(symptom, per_swing_features, agg, kb)
+    # --- KB matching (branch on general vs symptom mode) ---
+    if symptom is None:
+        ranked = match_general(per_swing_features, agg, kb)
+        match_label = "general"
+    else:
+        ranked = match_symptom(symptom, per_swing_features, agg, kb)
+        match_label = f"symptom={symptom}"
+
     if ranked:
         top = ranked[0]
         _log(
-            f"matcher: {len(ranked)} ranked cause(s); top = "
-            f"{top.cause.cause_id!r} at score {top.score:.2f}",
+            f"matcher ({match_label}): {len(ranked)} ranked cause(s); "
+            f"top = {top.cause.cause_id!r} at score {top.score:.2f}",
             verbose,
         )
     else:
-        _log("matcher: 0 ranked causes (KB returned empty list)", verbose)
+        _log(f"matcher ({match_label}): 0 ranked causes", verbose)
 
-    # --- LLM diagnosis ---
+    # --- LLM diagnosis (symptom=None flows through cleanly) ---
     diagnosis = generate_diagnosis(
         symptom=symptom,
         ranked=ranked,

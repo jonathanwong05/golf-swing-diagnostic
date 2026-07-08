@@ -51,7 +51,7 @@
       confidence_weight: 0.3
       reasoning: "Corroborating only per phase2_notes (rotation-confounded). Same as slice cause 4."
   fix:
-    technical_instruction: "Maintain your spine angle from address through impact. Hips should rotate around the spine, not thrust toward the ball."
+    technical_instruction: "Maintain your spine angle from address through impact. Hips should rotate around the spine, not thrust toward the ball. Keep your rear against an imaginary wall behind you through the strike."
   feels:
     - feel: "Feel like you're sitting into your trail hip at the top and posting up on your lead leg through impact, keeping your rear against an imaginary wall behind you"
       best_for: "players whose hips visibly thrust toward the ball"
@@ -75,7 +75,7 @@
       confidence_weight: 0.5
       reasoning: "Primary. Baseline mean -0.024, stddev 0.057. Validated on swing_22 (z=-1.24). Weight 0.5 (just clears floor alone) reflects the modest demo signal — hanging back is detectable but the demo z-score sits at the same magnitude as 2 baseline-tail normal swings (swing_03, swing_07), so single-swing diagnostic power is limited. Depends on 60% consistency filter across multi-swing uploads for reliable diagnosis in production. Was originally paired with weight_distribution_proxy_at_P7 (dropped from v1); no good corroborator remains."
   fix:
-    technical_instruction: "Shift your weight forward through impact — feel your lead hip and lead shoulder move slightly toward the target as the club approaches the ball, so your head finishes at or slightly ahead of its address position."
+    technical_instruction: "Shift your weight forward through the downswing so your sternum is over or slightly ahead of the ball at impact. Feel your lead hip and lead shoulder move toward the target as the club approaches the ball."
   feels:
     - feel: "Feel like your chest is over the ball at impact rather than behind it"
       best_for: "players whose head visibly stays back at impact"
