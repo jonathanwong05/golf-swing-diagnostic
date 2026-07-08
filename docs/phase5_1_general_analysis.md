@@ -270,13 +270,86 @@ Same 0.5 floor. Different message text.
 
 ## Empirical findings
 
-Populated as validation runs.
+Both cases validated on live API in the closing session of Phase 5.1.
+Total spend across both runs: ~$0.02.
 
-*(Test A — general mode on swing_16 alone)*: to be filled.
+### Test A — general mode on swing_16 alone
 
-*(Test B — general mode on swing_16 + swing_09 pair, fallback expected)*: to be filled.
+Matcher produced `cupped_lead_wrist_at_top` as primary at score 1.40
+(trail_wrist_angle_at_P4 + lead_wrist_angle_at_P4 corroborator, same
+firing pattern as symptom-mode Case A in `test_pipeline.py`). LLM
+output used the observational voice as designed — opening framing
+was "The most notable pattern in your swing is..." rather than the
+causal "You are slicing because..." that symptom mode produces.
 
-*(Test C — API path with no symptom)*: to be filled.
+Confirms three things: (1) the mode-dispatched opening paragraph
+in the system prompt takes effect, (2) `cause_id` collision handling
+works — `cupped_lead_wrist_at_top` lives in `slice.yaml` but resolves
+unambiguously in the general-mode pool, (3) `feel_id` and `drill_ids`
+still index cleanly into the pooled cause. No retries fired;
+first-attempt validation clean.
+
+### Test B — general mode on swing_16 + swing_09 pair
+
+This is the case that validates the whole design.
+
+Symptom-mode Case B in `test_pipeline.py` (same two swings, symptom
+= slice) falls back: the 60% consistency filter requires
+`cupped_lead_wrist_at_top` to fire on both swings, and it doesn't
+fire cleanly on swing_09 (a mostly-normal swing with only mild
+incidental cupping). Every score comes back 0.00. Symptom-mode
+fallback is the correct outcome — the user reported slice but the
+uploaded swings don't agree.
+
+General mode on the same pair did NOT fall back.
+`inconsistent_top_of_backswing` scored 1.10 and became primary. LLM
+output correctly used variance framing — Case B summary read *"Your
+top-of-backswing position varies noticeably from swing to swing..."*
+This is the general-mode equivalent of "your swings don't agree,"
+delivered as a diagnosis rather than a dead end.
+
+The mechanism: `inconsistent_top_of_backswing` uses `stddev_gt`
+mode indicators (trail_wrist_angle_at_P4_stddev,
+shoulder_rotation_proxy_at_P4_stddev, spine_angle_at_P4_stddev).
+Per `matcher.py`, `stddev_gt` bypasses the consistency filter —
+variance is inherently cross-swing, so requiring it to "fire on 60%
+of swings" would be a category error. With swing_16 (extreme
+cupped demo) paired with swing_09 (near-normal), the cross-swing
+stddev on top-of-backswing features blows past the 2×-baseline
+threshold and the indicator matches.
+
+### Design consequence: general-mode fallback is structurally harder to trigger
+
+In symptom mode, the fallback branch handles two distinct
+situations: (a) genuinely nothing stood out, and (b) something
+would have stood out but consistency filtering suppressed it. Both
+route to fallback.
+
+In general mode, situation (b) is intercepted by the variance
+causes from `inconsistent_contact.yaml`, which sit in the pool
+alongside every per-swing cause and bypass the consistency filter.
+A disparate upload no longer produces a fallback; it produces an
+"inconsistency" diagnosis. Fallback fires only when both:
+
+1. No per-swing (raw / zscore) cause clears 0.5 after consistency
+   filtering, AND
+2. No variance (stddev_gt) cause clears 0.5.
+
+Practically, this means general-mode fallback fires when the user
+uploaded a genuinely unremarkable set of swings, not when they
+uploaded a mixed bag. The variance branch converts "mixed bag" into
+a real diagnosis. This is worth being aware of in Phase 5 UI copy:
+general mode's fallback message should not overpromise coverage,
+because in the current pool it triggers rarely enough that most
+users hitting it are seeing "your swing is close to neutral for
+what v1 can measure" rather than "we couldn't figure out what
+you're doing."
+
+### Test C — API path with no symptom
+
+Pending. Deferred until the FastAPI `POST /analyze` handler
+accepts an optional `symptom` field (Phase 5 backend Task 3) and
+`scripts/test_api.py` gains a general-mode case (Task 4).
 
 ## Deferred / v2 candidates
 

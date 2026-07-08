@@ -736,9 +736,32 @@ match_symptom(
     # Empty list if the symptom has no loaded KB.
     # Raises ValueError if swings is empty.
 
+match_general(
+    swings: list[SwingFeatures],
+    aggregate: AggregatedFeatures,
+    kb: KnowledgeBase,
+) -> list[RankedCause]
+    # Symptom-agnostic ranking. Pools unique causes across every
+    # loaded symptom KB via collect_unique_causes, scores each
+    # against the user's swings, returns descending by score.
+    # Same scoring semantics as match_symptom (consistency filter
+    # for per-swing indicators, bypass for stddev_gt).
+    # Raises ValueError if swings is empty or if the KB fails the
+    # diagnostic-identity check (see collect_unique_causes).
+
+collect_unique_causes(kb: KnowledgeBase) -> list[Cause]
+    # Deduplicates causes by cause_id across all loaded symptom KBs.
+    # For shared cause_ids: enforces byte-identical diagnostic
+    # content (indicators, fix, category) across every host file
+    # via _assert_diagnostic_identity; pools coaching content
+    # (feels, drills) as union with first-occurrence order.
+    # Raises ValueError on diagnostic-content divergence — this is
+    # a broken-KB error, not a user error.
+
 should_fall_back(ranked: list[RankedCause]) -> bool
     # True if the empty list, no matched indicators, or
     # top score < FALLBACK_SCORE_FLOOR.
+    # Mode-neutral: used identically for symptom and general paths.
 ```
 
 **Indicator evaluation semantics**
@@ -762,6 +785,17 @@ Adding a new operator or mode requires (1) updating the
 `Indicator.operator` / `Indicator.mode` Literals in `kb/loader.py`,
 (2) adding the branch in `_evaluate_per_swing` or `_evaluate_stddev`
 in `matcher.py`, (3) documenting in this file.
+
+**Diagnostic-identity check** (`_assert_diagnostic_identity`)
+compares indicators via `_indicators_matcher_equal`, which
+DELIBERATELY excludes the `Indicator.reasoning` field. Reasoning is
+per-file authoring documentation — the matcher never reads it, the
+LLM never sees it — and it legitimately varies across symptom files
+for the same shared cause. Comparing indicator lists via default
+Pydantic `__eq__` would false-positive on every shared cause_id.
+Do not "fix" this by including reasoning; the exclusion is the
+correct behavior. See `docs/phase5_1_general_analysis.md` locked-in
+decision #2.
 
 ---
 
@@ -804,7 +838,7 @@ validate_against_kb(
     output: DiagnosticOutput,
     ranked_cause_ids: list[str],
     kb: KnowledgeBase,
-    symptom: str,
+    symptom: str | None,
 ) -> None
 ```
 - No-op in fallback mode (nothing to validate against causes).
@@ -814,6 +848,10 @@ validate_against_kb(
   `cause_id` across primary + secondary; `feel_id` is in range for
   each cited cause; `drill_ids` are in range for each cited cause
   (and empty when the cause has 0 drills).
+- `symptom=None` signals general mode. `cause_id` → `Cause` lookup
+  uses `collect_unique_causes(kb)` instead of
+  `kb.get_causes(symptom)`. `cause_id` values are globally unique
+  in the KB, so the resolution is unambiguous.
 
 **Anti-hallucination boundary**: any `cause_id` the LLM emits must
 have been in the ranked list surfaced to it in the prompt. This is
@@ -856,7 +894,7 @@ into the API call.
 **Public function**
 ```python
 build_prompt(
-    symptom: str,
+    symptom: str | None,
     ranked: list[RankedCause],
     kb: KnowledgeBase,
     *,
@@ -865,6 +903,14 @@ build_prompt(
     user_context: str = "",
 ) -> PromptPayload
 ```
+
+**Symptom vs. mode**: two orthogonal axes. `symptom` selects between
+symptom-mode (causal voice) and general-mode (observational voice)
+opening paragraphs. `mode` selects between diagnosis (top causes
+clear the floor) and fallback (nothing did). All four combinations
+are valid — a general-mode fallback fires when no cause from the
+pooled ranking clears 0.5, symptom-mode fallback fires when no
+cause for that specific symptom clears 0.5.
 
 **Cause selection by mode**
 - `mode="diagnosis"`: only causes with score >=
@@ -915,9 +961,22 @@ Empirical: cache_read matches cache_create across calls within the
    - `shank` — brief acknowledgment of the tension/confidence
      component alongside the mechanical cause
    - all other symptoms — standard cause-ranked diagnostic frame
-7. Fallback-mode rules (cite closest cause; mention grip /
-   alignment / weight distribution as invisible-axis blind spots;
-   suggest face-on filming, more swings, clearer example)
+   - general mode (`symptom is None`) — observational opening; no
+     symptom-specific branches trigger even when a matched
+     cause_id lives in inconsistent_contact.yaml or shank.yaml
+7. Fallback-mode rules — branches on symptom presence:
+   - Symptom-mode fallback: cite closest cause; mention grip /
+     alignment / weight distribution as invisible-axis blind
+     spots; suggest face-on filming, more swings, clearer example.
+   - General-mode fallback: cite closest observations; frame as
+     "nothing stood out" rather than "we can't diagnose"; note
+     the two branches (close-to-neutral vs. invisible-axis blind
+     spot); suggest reporting a specific symptom if the user has
+     one. Structurally harder to trigger than symptom-mode
+     fallback — variance causes (stddev_gt) bypass the consistency
+     filter and often catch disparate uploads that symptom mode
+     would fall back on. See
+     `docs/phase5_1_general_analysis.md` empirical findings.
 
 ---
 
@@ -941,7 +1000,7 @@ failure.
 **Public function**
 ```python
 generate_diagnosis(
-    symptom: str,
+    symptom: str | None,
     ranked: list[RankedCause],
     kb: KnowledgeBase,
     *,
@@ -955,9 +1014,17 @@ generate_diagnosis(
 ) -> DiagnosticOutput
 ```
 
+**Symptom parameter**: `str | None`. Non-None values (`"slice"`,
+`"hook"`, etc., must be in `SUPPORTED_SYMPTOMS`) route through the
+symptom-mode prompt with causal voice. `None` routes through the
+general-mode prompt with observational voice. Empty string is NOT
+accepted — the API layer converts `""` to `None` before calling.
+
 **Behavior**
 1. `mode = "fallback" if should_fall_back(ranked) else "diagnosis"`
-2. `payload = build_prompt(...)` with that mode
+2. `payload = build_prompt(...)` with that mode; `symptom=None`
+   triggers the general-mode opening paragraph and skips symptom-
+   specific branches (inconsistent_contact reframe, shank caveat)
 3. Loop up to `max_retries + 1` times:
    a. Call `client.messages.create(**payload)` with cache_control
       already set by build_prompt
@@ -1024,7 +1091,7 @@ class AnalysisResult:
 ```python
 analyze_swings(
     video_paths: list[Path],
-    symptom: str,
+    symptom: str | None,
     kb: KnowledgeBase,
     *,
     user_context: str = "",
@@ -1038,8 +1105,10 @@ analyze_swings(
 ```
 
 **Composition (no new logic; pure orchestration)**
-1. Input validation — non-empty paths, supported symptom, symptom
-   loaded in KB, all video files exist
+1. Input validation — non-empty paths; if `symptom` is not None,
+   must be in `SUPPORTED_SYMPTOMS` and loaded in the KB; all video
+   files exist. `symptom=None` routes through general mode
+   (`match_general` + general-mode prompt).
 2. Eager Anthropic client init (fail fast on missing API key before
    pose extraction runs)
 3. Per swing:
@@ -1049,8 +1118,11 @@ analyze_swings(
    c. `compute_swing_features()` via orchestrator
    d. Optional: `render_segmented_pose_video()` to annotated dir
 4. `aggregate(per_swing_features)` — cross-swing means/stddevs
-5. `match_symptom(...)` — ranked causes
-6. `generate_diagnosis(...)` — LLM output
+5. Ranked causes: `match_symptom(symptom, ...)` when symptom is
+   provided; `match_general(...)` when symptom is None. Both
+   return `list[RankedCause]` — downstream code is mode-agnostic.
+6. `generate_diagnosis(symptom, ...)` — LLM output; symptom
+   threads through to `build_prompt` for voice selection.
 
 **KB is passed in, not loaded internally**. Phase 5's API loads KB
 once at startup and injects into every request. Same pattern as
@@ -1346,6 +1418,63 @@ End-to-end pipeline test on REAL video data. Uses cached pose NPZs
 
 Estimated cost: ~$0.03 per run.
 python scripts/test_pipeline.py
+
+### `scripts/audit_kb_consistency.py`
+Runs `collect_unique_causes(kb)` and reports on the diagnostic-
+identity check. For every shared cause_id (appearing in 2+ symptom
+files), prints the host files, confirms diagnostic content is
+identical, and prints the pooled feels/drills counts (union across
+files). Fails loud with `ValueError` if identity check fails —
+this script is the canonical way to verify KB edits didn't
+inadvertently diverge indicator thresholds across symptom files
+for a shared cause. Recommended run after any KB edit touching a
+shared cause_id (early_extension, hanging_back, over_the_top,
+casting_early_release, reverse_pivot).
+python scripts/audit_kb_consistency.py
+
+### `scripts/test_general_matcher.py`
+Sanity script for `match_general`. Runs the general-mode matcher
+against real cached swings and prints the ranked list. Two cases:
+- Case A: swing_16 alone → expect `cupped_lead_wrist_at_top`
+  primary at score 1.40 (same firing pattern as symptom mode
+  Case A, resolved through the pooled cause set)
+- Case B: swing_16 + swing_09 → expect
+  `inconsistent_top_of_backswing` primary at score 1.10
+  (variance causes bypass consistency filter; where symptom mode
+  falls back, general mode diagnoses inconsistency)
+
+Does not hit Anthropic API. Serves as regression check for the
+pooling logic and the stddev_gt bypass behavior in general mode.
+python scripts/test_general_matcher.py
+
+### `scripts/test_general_prompt.py`
+Sanity script for `build_prompt` with `symptom=None`. Builds
+prompts from fixture-based RankedCause lists and prints them for
+eyeball inspection. Does NOT hit Anthropic API. Verifies:
+- General-mode opening paragraph replaces symptom-mode opener
+- No symptom-specific branches trigger (no inconsistent_contact
+  reframe, no shank caveat) even when the matched cause_id lives
+  in inconsistent_contact.yaml or shank.yaml
+- General-mode fallback message differs from symptom-mode fallback
+- Voice-guidance rules (cite coaching units, describe proxies)
+  are identical to symptom mode
+
+python scripts/test_general_prompt.py
+
+### `scripts/test_general_pipeline.py`
+End-to-end general-mode pipeline test on REAL video data.
+Symptom=None throughout. Two cases (mirroring `test_pipeline.py`):
+- Case A: swing_16 alone → diagnosis mode expected, observational
+  voice, cupped_lead_wrist_at_top primary
+- Case B: swing_16 + swing_09 → diagnosis mode expected (NOT
+  fallback — variance causes fire; contrast with symptom-mode
+  Case B). Variance-language framing in LLM summary.
+
+Estimated cost: ~$0.02 per run (both cases combined). Serves as
+regression check for the pooling + general-prompt + LLM voice
+integration and confirms the "general mode intercepts disparate
+uploads" property.
+python scripts/test_general_pipeline.py
 
 ---
 
