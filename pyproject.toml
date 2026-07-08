@@ -7,6 +7,28 @@ name = "golf-swing-diagnostic"
 version = "0.1.0"
 description = "Symptom-driven golf swing diagnostic tool"
 requires-python = ">=3.11"
+dependencies = [
+    # --- Pose extraction & video ---
+    # MediaPipe pin: 0.10.14 is the last version with the mp.solutions
+    # API used throughout the extractor. Documented in phase1_notes.md.
+    "mediapipe==0.10.14",
+    "opencv-python-headless>=4.9,<5",
+    "numpy>=1.26,<3",
+    "scipy>=1.11,<2",
+
+    # --- Data & validation ---
+    "pydantic>=2.5,<3",
+    "pyyaml>=6.0,<7",
+
+    # --- LLM ---
+    "anthropic>=0.34,<1",
+
+    # --- Web ---
+    "fastapi>=0.110,<1",
+    "uvicorn[standard]>=0.27,<1",
+    "python-multipart>=0.0.9,<1",  # required by FastAPI for form/file uploads
+    "jinja2>=3.1,<4",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

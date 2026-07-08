@@ -1,0 +1,27 @@
+# Don't ship these to the build context — they're large, transient,
+# or platform-specific.
+
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+
+# Big local-only files. Users will upload their own; we don't need
+# the dev corpus in the container.
+data/
+!data/labels.yaml
+!data/samples/
+
+# HF-relevant: don't ship the git history or IDE state
+.git/
+.gitignore
+.idea/
+.vscode/
+
+# Local scratch
+scratch/
+notebooks/
