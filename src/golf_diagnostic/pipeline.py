@@ -107,6 +107,70 @@ def _seg_to_checkpoints(seg: SwingSegmentation) -> dict[str, int]:
     """Convert SwingSegmentation to the dict shape orchestrator expects."""
     return {"P1": seg.p1, "P4": seg.p4, "P7": seg.p7, "P10": seg.p10}
 
+def _make_browser_compatible(path: Path, verbose: bool) -> None:
+    """Rewrite an MP4 into a browser-playable form.
+
+    OpenCV's ``VideoWriter`` on macOS writes MPEG-4 Part 2
+    (``mp4v`` FourCC), which browsers cannot decode — QuickTime
+    plays it via macOS system codecs, but Chrome and Safari show
+    a black player without any error.
+
+    Additionally, OpenCV places the ``moov`` atom at the end of
+    the file, which browsers need at the start to begin playback
+    without a full download.
+
+    This function transcodes to H.264 baseline profile + moves
+    ``moov`` to the start in a single ffmpeg pass. Baseline profile
+    is chosen for maximum compatibility (older browsers, mobile
+    Safari). yuv420p is the pixel format all browsers can decode.
+
+    Writes to a ``.tmp.mp4`` sibling and atomically replaces the
+    original. Silent no-op if ffmpeg isn't installed — the video
+    still works in curl and QuickTime; only browser playback breaks.
+    """
+    import shutil
+    import subprocess
+
+    if shutil.which("ffmpeg") is None:
+        _log(
+            f"WARNING: ffmpeg not found on PATH; skipping browser-compat "
+            f"pass on {path.name}. Video will not play in Chrome/Safari. "
+            f"Install with 'brew install ffmpeg'.",
+            verbose=True,
+        )
+        return
+
+    tmp = path.with_suffix(".tmp.mp4")
+    result = subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel", "error",
+            "-i", str(path),
+            # H.264 baseline profile — most permissive; plays in
+            # every browser including old mobile Safari.
+            "-c:v", "libx264",
+            "-profile:v", "baseline",
+            "-level", "3.0",
+            "-pix_fmt", "yuv420p",   # required for browser playback
+            "-preset", "veryfast",   # transcode speed > file size here
+            "-movflags", "+faststart",
+            str(tmp),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        _log(
+            f"WARNING: ffmpeg transcode failed on {path.name} "
+            f"(exit {result.returncode}): {result.stderr.strip()}",
+            verbose=True,
+        )
+        tmp.unlink(missing_ok=True)
+        return
+
+    tmp.replace(path)
+    _log(f"   H.264 transcode complete: {path.name}", verbose)
 
 def _validate_inputs(
     video_paths: list[Path],
@@ -216,6 +280,7 @@ def _process_one_swing(
         annotated_path = annotated_output_dir / f"{video_path.stem}_annotated.mp4"
         _log(f"[{index}/{total}]   rendering annotated → {annotated_path.name}", verbose)
         render_segmented_pose_video(video_path, pose_data, seg, annotated_path)
+        _make_browser_compatible(annotated_path, verbose)
 
     return features, annotated_path
 

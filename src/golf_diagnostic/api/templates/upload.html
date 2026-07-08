@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Upload swings — Golf Swing Diagnostic{% endblock %}
+
+{% block content %}
+<section class="upload-intro">
+    <h1>Analyze your swing</h1>
+    <p>Upload 1&ndash;{{ max_videos }} down-the-line iron swings. If you know what your ball is doing, pick the symptom; if you're not sure, that's a valid answer.</p>
+</section>
+
+<form id="upload-form" class="upload-form" enctype="multipart/form-data" novalidate>
+    <fieldset class="field-group">
+        <legend>1. What's going on with your ball flight?</legend>
+        <label for="symptom" class="field-label">
+            Symptom
+            <select id="symptom" name="symptom" class="field-select">
+                <option value="" selected>I'm not sure — analyze my swing generally</option>
+                <option disabled>──────────</option>
+                {% for symptom in loaded_symptoms %}
+                <option value="{{ symptom }}">{{ symptom.replace('_', ' ').title() }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <p class="field-hint">General analysis surfaces the most notable patterns in your swing across every fault the tool knows about.</p>
+    </fieldset>
+
+    <fieldset class="field-group">
+        <legend>2. Which hand do you swing with?</legend>
+        <div class="handedness-toggle">
+            <label class="radio-pill">
+                <input type="radio" name="handedness" value="right" checked>
+                <span>Right-handed</span>
+            </label>
+            <label class="radio-pill">
+                <input type="radio" name="handedness" value="left">
+                <span>Left-handed</span>
+            </label>
+        </div>
+        <p id="lh-caveat" class="field-caveat" hidden>
+            The pose overlay in the annotated video will still show green on the physical left side of your body. That's a debugging quirk of the visualizer &mdash; the diagnosis itself is fully handedness-aware.
+        </p>
+    </fieldset>
+
+    <fieldset class="field-group">
+        <legend>3. Upload your swing videos</legend>
+        <p class="field-hint">
+            Film from down-the-line: camera on the ground behind you, aligned along your target line, held vertically. Ideal is 3&ndash;5 swings for a reliable diagnosis; 1 works but the tool is more conservative.
+        </p>
+
+        <figure class="camera-guide">
+            <img src="/static/img/camera_guide.jpg"
+                alt="Down-the-line reference: golfer at address, camera positioned behind them along the target line"
+                class="camera-guide-img">
+            <figcaption class="camera-guide-caption">
+                Down-the-line view: camera behind you, aligned along your target line, framing your whole body plus a foot of headroom.
+            </figcaption>
+        </figure>
+
+        <label for="videos" class="field-label">
+            Videos ({{ allowed_extensions | join(', ') }}, max {{ max_file_mb }} MB each, {{ max_total_mb }} MB total)
+            <input type="file" id="videos" name="videos" class="field-file"
+                   multiple
+                   accept="{{ allowed_extensions | join(',') }}"
+                   required>
+        </label>
+        <ul id="file-list" class="file-list" hidden></ul>
+        <p id="file-summary" class="field-hint"></p>
+    </fieldset>
+
+    <fieldset class="field-group">
+        <legend>4. Anything else? (optional)</legend>
+        <label for="user_context" class="field-label">
+            Extra context
+            <textarea id="user_context" name="user_context" class="field-textarea"
+                      rows="3"
+                      maxlength="{{ max_context_chars }}"
+                      placeholder="e.g. 'I've been fighting a slice for a month' or 'This started after I changed my grip'"></textarea>
+        </label>
+        <p class="field-hint"><span id="context-count">0</span> / {{ max_context_chars }} characters</p>
+    </fieldset>
+
+    <div class="submit-region">
+        <button type="submit" id="submit-btn" class="btn-primary">Analyze my swing</button>
+        <p id="upload-status" class="upload-status" hidden></p>
+    </div>
+</form>
+
+<section class="v1-note">
+    <h3>What v1 can and can't see</h3>
+    <p>The tool works from down-the-line video only. It measures wrist angles, body rotation, spine posture, head and hip movement, and tempo. It <em>can't</em> measure your grip, your alignment relative to the target line, or your weight distribution &mdash; those signals live along the camera's line of sight and are structurally invisible from this angle. If your issue is one of those, v2 (face-on view) is the fix.</p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/upload.js"></script>
+{% endblock %}

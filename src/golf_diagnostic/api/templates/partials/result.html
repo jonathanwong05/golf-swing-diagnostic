@@ -1,0 +1,187 @@
+{# --- IN-FLIGHT --- #}
+{% if not is_terminal %}
+<section class="result-inflight">
+    <div class="spinner" aria-hidden="true"></div>
+    <h2 class="result-inflight-heading">Analyzing your swing</h2>
+    <p class="result-inflight-status">
+        State: <span id="live-state" data-state="{{ job.state }}">{{ job.state }}</span>
+        · Elapsed: <span id="live-elapsed">0s</span>
+    </p>
+    <ul class="result-inflight-hints">
+        <li>Extracting pose keypoints from each video</li>
+        <li>Segmenting each swing into checkpoints (P1 → P4 → P7 → P10)</li>
+        <li>Computing features and matching against the knowledge base</li>
+        <li>Generating your diagnosis</li>
+    </ul>
+    <p class="result-inflight-note">
+        Typical time: 20&ndash;40 seconds per swing. This page will update itself automatically.
+    </p>
+</section>
+
+{# --- FAILED --- #}
+{% elif is_failed %}
+<section class="result-failed">
+    <h2>Analysis failed</h2>
+    <p class="result-failed-message">{{ job.error or "The pipeline hit an unexpected error." }}</p>
+    <div class="result-failed-guidance">
+        <p class="result-failed-guidance-lead">Common causes:</p>
+        <ul>
+            <li>Video too short (less than about a full swing) or too long (over 10 seconds)</li>
+            <li>Pose detection failed on the majority of frames &mdash; usually a lighting, distance, or camera-angle issue</li>
+            <li>The segmenter couldn't locate a clean impact frame &mdash; can happen with unusual tempos or partial swings</li>
+            <li>Video format not fully supported despite the extension being valid</li>
+        </ul>
+        <p class="result-failed-next">
+            <a href="/app">Try again</a> with a swing filmed from down-the-line, in good light, with your whole body visible.
+        </p>
+    </div>
+</section>
+
+{# --- DONE --- #}
+{% else %}
+{% set diagnosis = job.result.diagnosis %}
+<section class="result-done">
+    <h2 class="result-summary-label">Diagnosis summary</h2>
+    <p class="result-summary">{{ diagnosis.summary }}</p>
+
+    {# --- Annotated videos (moved up: users want to see their swing first) --- #}
+    {% if job.result.annotated_video_urls %}
+    <section class="videos-section">
+        <h3 class="videos-heading">Your swings with pose overlay</h3>
+        <p class="videos-hint">
+            Green limbs are lead side, red are trail side, checkpoint labels appear at address (P1), top (P4), impact (P7), and finish (P10).
+        </p>
+        <div class="videos-grid">
+            {% for url in job.result.annotated_video_urls %}
+            <video controls playsinline preload="metadata" class="video-tile">
+                <source src="{{ url }}" type="video/mp4">
+            </video>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {# --- Fallback message (no primary cause diagnosed) --- #}
+    {% if diagnosis.fallback_message %}
+    <section class="cause-card cause-card-fallback">
+        <h3 class="cause-card-heading">Nothing stood out clearly</h3>
+        <p class="cause-card-body">{{ diagnosis.fallback_message }}</p>
+    </section>
+
+    {# --- Primary cause --- #}
+    {% elif diagnosis.primary %}
+    {% set cause = diagnosis.primary %}
+    <section class="cause-card cause-card-primary">
+        <div class="cause-card-header">
+            <span class="cause-card-rank">Primary observation</span>
+            <span class="category-badge category-badge-{{ cause.cause_category }}">
+                {{ cause.cause_category }}
+            </span>
+        </div>
+        <h3 class="cause-card-heading">{{ cause.cause_description }}</h3>
+
+        <div class="cause-card-body">
+            <p>{{ cause.technical_explanation }}</p>
+            <p>{{ cause.bridge_to_feel }}</p>
+        </div>
+
+        <div class="feel-block">
+            <div class="feel-label">The feel</div>
+            <blockquote class="feel-quote">{{ cause.feel.text }}</blockquote>
+            {% if cause.feel.why_it_works %}
+            <p class="feel-why">{{ cause.feel.why_it_works }}</p>
+            {% endif %}
+        </div>
+
+        <div class="fix-block">
+            <div class="fix-label">The technical fix</div>
+            <p class="fix-text">{{ cause.fix.technical_instruction }}</p>
+        </div>
+
+        {% if cause.drills %}
+        <div class="drills-block">
+            <div class="drills-label">Drills</div>
+            <ul class="drills-list">
+                {% for drill in cause.drills %}
+                <li>
+                    {% if drill.youtube_url %}
+                    <a href="{{ drill.youtube_url }}" target="_blank" rel="noopener">{{ drill.name }}</a>
+                    <span class="drills-external">↗</span>
+                    {% else %}
+                    {{ drill.name }}
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </section>
+
+    {# --- Secondary causes (collapsed) --- #}
+    {% if diagnosis.secondary %}
+    <details class="secondary-observations">
+        <summary>
+            Show {{ diagnosis.secondary | length }} more observation{% if diagnosis.secondary | length != 1 %}s{% endif %}
+        </summary>
+        {% for cause in diagnosis.secondary %}
+        <section class="cause-card cause-card-secondary">
+            <div class="cause-card-header">
+                <span class="cause-card-rank">Also observed</span>
+                <span class="category-badge category-badge-{{ cause.cause_category }}">
+                    {{ cause.cause_category }}
+                </span>
+            </div>
+            <h3 class="cause-card-heading">{{ cause.cause_description }}</h3>
+
+            <div class="cause-card-body">
+                <p>{{ cause.technical_explanation }}</p>
+                <p>{{ cause.bridge_to_feel }}</p>
+            </div>
+
+            <div class="feel-block feel-block-secondary">
+                <div class="feel-label">The feel</div>
+                <blockquote class="feel-quote">{{ cause.feel.text }}</blockquote>
+            </div>
+
+            <div class="fix-block">
+                <div class="fix-label">The technical fix</div>
+                <p class="fix-text">{{ cause.fix.technical_instruction }}</p>
+            </div>
+
+            {% if cause.drills %}
+            <div class="drills-block">
+                <div class="drills-label">Drills</div>
+                <ul class="drills-list">
+                    {% for drill in cause.drills %}
+                    <li>
+                        {% if drill.youtube_url %}
+                        <a href="{{ drill.youtube_url }}" target="_blank" rel="noopener">{{ drill.name }}</a>
+                        <span class="drills-external">↗</span>
+                        {% else %}
+                        {{ drill.name }}
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </section>
+        {% endfor %}
+    </details>
+    {% endif %}
+    {% endif %}
+
+    {# --- v1 disclosure --- #}
+    <section class="v1-disclosure">
+        <p>
+            Reminder: v1 works from down-the-line video only.
+            It can't see grip position, alignment relative to the target line, or weight distribution &mdash; those signals live along the camera axis and are structurally invisible from this angle.
+            If your issue is one of those, filming face-on (v2, planned) would restore them.
+        </p>
+    </section>
+
+    <div class="cta-region">
+        <a href="/app" class="btn-secondary">Analyze another swing</a>
+    </div>
+</section>
+{% endif %}

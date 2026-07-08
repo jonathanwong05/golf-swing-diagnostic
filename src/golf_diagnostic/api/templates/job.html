@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if is_done %}Diagnosis
+    {% elif is_failed %}Analysis failed
+    {% else %}Analyzing…
+    {% endif %}
+    — Golf Swing Diagnostic
+{% endblock %}
+
+{% block content %}
+<section class="job-header">
+    <div class="job-header-meta">
+        <span class="mode-badge {% if is_general_mode %}mode-badge-general{% else %}mode-badge-symptom{% endif %}">
+            {{ mode_label }}
+        </span>
+        <span class="job-header-swings">{{ job.n_videos }} swing{% if job.n_videos != 1 %}s{% endif %}</span>
+        <span class="job-header-handedness">{{ job.handedness | capitalize }}-handed</span>
+    </div>
+    <div class="share-link" data-job-id="{{ job.id }}">
+        <label for="share-url" class="share-link-label">Shareable link</label>
+        <div class="share-link-row">
+            <input type="text" id="share-url" class="share-link-input" readonly
+                   value="">
+            <button type="button" id="share-copy" class="share-link-button">Copy</button>
+        </div>
+        <p class="share-link-hint">This URL stays live for 1 hour.</p>
+    </div>
+</section>
+
+<div id="result-region"
+     data-job-id="{{ job.id }}"
+     data-is-terminal="{{ 'true' if is_terminal else 'false' }}">
+    {% include "partials/result.html" %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/job.js"></script>
+{% endblock %}

@@ -13,17 +13,31 @@ Run::
 What it does:
 
 1. ``GET /`` — verify server is up, KB loaded, Anthropic ready.
-2. ``POST /analyze`` (negative) — unsupported symptom rejected 400.
+2. ``POST /analyze`` (negative) — unsupported symptom rejected 400,
+   error mentions the "omit for general analysis" hint.
 3. ``POST /analyze`` (negative) — bad extension rejected 400.
-4. ``POST /analyze`` (positive) — swing_16 + symptom=slice.
+4. ``POST /analyze`` (positive, symptom mode) — swing_16 +
+   symptom=slice.
 5. Poll ``GET /jobs/{id}`` until ``done`` or ``failed``.
-6. Print the diagnosis and confirm annotated video URLs resolve.
+6. Print the diagnosis and confirm annotated video URLs resolve;
+   verify serialized ``symptom`` field round-trips as ``"slice"``.
+7. ``POST /analyze`` (positive, general mode) — swing_16 with no
+   symptom field.
+8. Poll and inspect the general-mode diagnosis; verify serialized
+   ``symptom`` field round-trips as ``null``.
 
-Expected outcome on the positive path: state transitions
+Expected outcome on the symptom-mode path: state transitions
 ``queued`` → ``processing`` → ``done``, with a primary cause of
 ``cupped_lead_wrist_at_top`` (validated on swing_16 during Phase 4).
 
-Cost: ~$0.01 (one Anthropic call, cached prompt).
+Expected outcome on the general-mode path: same transitions,
+primary cause also ``cupped_lead_wrist_at_top`` (matched via the
+pooled cause set; validated on swing_16 during Phase 5.1
+``test_general_pipeline.py`` Case A). Voice differs (observational
+vs. causal), but the ranked-cause identity is the same.
+
+Cost: ~$0.02 (two Anthropic calls; each is a fresh cache-write
+because the symptom-mode and general-mode system prompts differ).
 """
 
 from __future__ import annotations
@@ -82,7 +96,12 @@ def _post_multipart(
     files: list[tuple[str, Path]],
     fields: dict[str, str],
 ) -> tuple[int, dict | None, str]:
-    """POST a multipart/form-data request with files + fields."""
+    """POST a multipart/form-data request with files + fields.
+
+    Pass an empty ``fields`` dict (or omit a specific key) to send
+    a request without that form field — useful for exercising the
+    "symptom omitted → general mode" path.
+    """
     boundary = f"----boundary-{uuid.uuid4().hex}"
     buf = io.BytesIO()
     for name, value in fields.items():
@@ -186,6 +205,12 @@ def test_reject_unsupported_symptom() -> None:
         "Unsupported symptom" in joined,
         f"error mentions 'Unsupported symptom' (got: {joined!r})",
     )
+    # The improved error copy also hints at general mode — verify
+    # the user is nudged toward the escape hatch.
+    check(
+        "Omit the symptom field" in joined,
+        f"error hints at general-mode escape (got: {joined!r})",
+    )
 
 
 def test_reject_bad_extension(tmp_dir: Path) -> None:
@@ -206,8 +231,8 @@ def test_reject_bad_extension(tmp_dir: Path) -> None:
     )
 
 
-def test_analyze_swing_16() -> str:
-    print("\n[4] POST /analyze — swing_16 + symptom=slice")
+def test_analyze_swing_16_symptom() -> str:
+    print("\n[4] POST /analyze — swing_16 + symptom=slice (symptom mode)")
     if not SWING_PATH.exists():
         fail(f"{SWING_PATH} not found; run from project root")
     status, data, _ = _post_multipart(
@@ -222,8 +247,26 @@ def test_analyze_swing_16() -> str:
     return data["job_id"]
 
 
+def test_analyze_swing_16_general() -> str:
+    print("\n[7] POST /analyze — swing_16 (general mode, no symptom field)")
+    if not SWING_PATH.exists():
+        fail(f"{SWING_PATH} not found; run from project root")
+    # Deliberately omit the ``symptom`` field entirely — the API
+    # normalizes missing/empty to general mode via ``symptom=None``.
+    status, data, _ = _post_multipart(
+        "/analyze",
+        files=[("videos", SWING_PATH)],
+        fields={},
+    )
+    check(status == 200, f"status is 200 (got {status})")
+    check(isinstance(data, dict) and "job_id" in data, "response has job_id")
+    check(data.get("state") == "queued", f"initial state is 'queued' (got {data.get('state')!r})")
+    print(f"  → job_id: {data['job_id']}")
+    return data["job_id"]
+
+
 def test_poll_until_done(job_id: str) -> dict:
-    print(f"\n[5] Poll GET /jobs/{job_id} until terminal state")
+    print(f"\n    Poll GET /jobs/{job_id} until terminal state")
     start = time.time()
     last_state = None
     while True:
@@ -234,7 +277,7 @@ def test_poll_until_done(job_id: str) -> dict:
         check(status == 200, f"status is 200 (got {status})")
         state = (data or {}).get("state")
         if state != last_state:
-            print(f"  [{elapsed:5.1f}s] state → {state}")
+            print(f"    [{elapsed:5.1f}s] state → {state}")
             last_state = state
         if state == "done":
             ok(f"reached 'done' in {elapsed:.1f}s")
@@ -244,8 +287,26 @@ def test_poll_until_done(job_id: str) -> dict:
         time.sleep(POLL_INTERVAL)
 
 
-def test_diagnosis_shape(payload: dict, job_id: str) -> None:
-    print("\n[6] Result shape + annotated video reachable")
+def test_diagnosis_shape(
+    payload: dict,
+    job_id: str,
+    expected_symptom: str | None,
+) -> None:
+    """Verify diagnosis payload shape and that ``symptom`` round-trips.
+
+    ``expected_symptom`` is the value we posted (or None if we omitted
+    the field). It should match what the serialized job carries back.
+    """
+    mode_label = "symptom mode" if expected_symptom else "general mode"
+    print(f"    Result shape + annotated video reachable ({mode_label})")
+
+    # Symptom round-trips: JSON null for general mode, string for symptom mode.
+    check(
+        payload.get("symptom") == expected_symptom,
+        f"job.symptom == {expected_symptom!r} "
+        f"(got {payload.get('symptom')!r})",
+    )
+
     result = payload.get("result") or {}
     diagnosis = result.get("diagnosis") or {}
     check("summary" in diagnosis, "diagnosis.summary present")
@@ -257,13 +318,13 @@ def test_diagnosis_shape(payload: dict, job_id: str) -> None:
     fallback = diagnosis.get("fallback_message")
     if primary is not None:
         ok("primary cause populated (diagnosis mode)")
-        print(f"    cause_id: {primary.get('cause_id')}")
-        print(f"    feel:     {(primary.get('feel') or {}).get('text')!r}")
+        print(f"      cause_id: {primary.get('cause_id')}")
+        print(f"      feel:     {(primary.get('feel') or {}).get('text')!r}")
         check("technical_explanation" in primary, "primary.technical_explanation present")
         check("feel" in primary, "primary.feel present")
     elif fallback is not None:
         ok("fallback_message populated (fallback mode)")
-        print(f"    message preview: {fallback[:120]}...")
+        print(f"      message preview: {fallback[:120]}...")
     else:
         fail("neither primary nor fallback_message populated")
 
@@ -277,9 +338,9 @@ def test_diagnosis_shape(payload: dict, job_id: str) -> None:
     # Debug trail
     ranked = result.get("top_ranked_causes") or []
     if ranked:
-        print(f"  top ranked (debug):")
+        print(f"    top ranked (debug):")
         for rc in ranked[:5]:
-            print(f"    {rc.get('score', 0):.2f}  {rc.get('cause_id')}")
+            print(f"      {rc.get('score', 0):.2f}  {rc.get('cause_id')}")
 
 
 # ----------------------------------------------------------------------
@@ -293,9 +354,19 @@ def main() -> None:
     test_health()
     test_reject_unsupported_symptom()
     test_reject_bad_extension(tmp_dir)
-    job_id = test_analyze_swing_16()
-    payload = test_poll_until_done(job_id)
-    test_diagnosis_shape(payload, job_id)
+
+    # [4-6] Symptom-mode round trip.
+    symptom_job_id = test_analyze_swing_16_symptom()
+    print("\n[5] Poll symptom-mode job until done")
+    symptom_payload = test_poll_until_done(symptom_job_id)
+    print("\n[6] Symptom-mode result shape")
+    test_diagnosis_shape(symptom_payload, symptom_job_id, expected_symptom="slice")
+
+    # [7-8] General-mode round trip (no symptom field).
+    general_job_id = test_analyze_swing_16_general()
+    print("\n[8] Poll general-mode job until done + result shape")
+    general_payload = test_poll_until_done(general_job_id)
+    test_diagnosis_shape(general_payload, general_job_id, expected_symptom=None)
 
     print("\nAll checks passed.")
 

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Golf Swing Diagnostic{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+    <header class="site-header">
+        <div class="wrap">
+            <a href="/app" class="brand">Golf Swing Diagnostic</a>
+            <span class="version-tag">v1 · down-the-line, iron</span>
+        </div>
+    </header>
+
+    <main class="site-main">
+        <div class="wrap">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        <div class="wrap">
+            <p>Portfolio project. v2 will add face-on camera view to restore grip, alignment, and weight-distribution measurements.</p>
+        </div>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
