@@ -388,3 +388,42 @@ Other v2 items relevant to Phase 5 specifically:
   type change across matcher, output_schema, llm_client, prompt,
   and pipeline).
 - `v2_priorities.md` — deferred work, ranked by impact.
+
+
+## Deployment findings (Fly.io, July 2026)
+
+Deployed to Fly.io shared-cpu-1x with 1GB RAM. Findings that
+matter for anyone reading this repo cold:
+
+**Single-machine, always-on configuration.** The default
+`auto_stop_machines = 'stop'` with 2 machines produced 404s
+during polling — uploads landed on Machine A but polls sometimes
+routed to Machine B, which had no in-memory record of the job.
+Fixed with `min_machines_running = 1` and
+`auto_stop_machines = 'off'` in `fly.toml` plus
+`fly scale count 1`. Documented as v2 item #6.
+
+**MediaPipe model pre-download at Docker build time.** MediaPipe
+lazily downloads pose models into its own `site-packages`
+directory on first use. When the container runs as UID 1000
+(HF Spaces convention, also Fly.io default), the write fails
+with a permission error. Fix: run all three model complexities
+during `docker build` while still root, so the files exist
+before user switch. Adds ~30s to build time and 20MB to image
+size; worth it for reliable cold starts.
+
+**H.264 transcode required for browser video playback.** OpenCV
+VideoWriter defaults to mp4v (MPEG-4 Part 2 on macOS). QuickTime
+plays these via system codecs; browsers cannot decode them.
+Fix: ffmpeg post-process step in `pipeline.py::_make_browser_compatible`
+converts to H.264 baseline + yuv420p + moov-atom-at-start.
+This is why `ffmpeg` is a real deployment dependency, not a dev tool.
+
+**Deploy image size: 550 MB.** Dominated by MediaPipe (~200 MB),
+OpenCV headless (~90 MB), and Python base image (~130 MB).
+Acceptable for shared-CPU Fly deployment; would be worth
+optimizing for larger fleets.
+
+**Realistic cost, 20-50 analyses/month:** $1-2/month Fly +
+$0.40-1.00/month Anthropic API = $1.50-3.00/month total.
+Coffee money for a live portfolio piece.

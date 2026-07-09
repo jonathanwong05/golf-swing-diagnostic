@@ -243,3 +243,40 @@ specific dropped causes.
 
 That framing is honest with users and honest about the roadmap. It
 also makes the argument for v2 straightforward when the time comes.
+
+## Meta-observation: local-Docker-hosted is a real progression, not one step
+
+The Phase 5 spec described deployment as "HuggingFace Spaces or
+Render free tier" — a single line item. Reality was three
+distinct stages, each catching different classes of bugs:
+
+1. **Local Python** worked for months during Phases 1-4. It
+   surfaced no dependency-management problems because
+   `.venv` accumulated packages we needed without recording
+   them anywhere machine-readable.
+2. **Local Docker** was the first environment that started from
+   a clean slate. Immediately caught the missing `dependencies`
+   array in `pyproject.toml`; caught MediaPipe's runtime write
+   into `site-packages` failing under a non-root user; caught
+   OpenCV's default `mp4v` codec producing files browsers
+   cannot decode (fixed with an ffmpeg H.264 transcode step).
+   None of these would have surfaced without a from-scratch
+   build.
+3. **Fly.io deployment** caught the in-memory `JobStore` failure
+   mode described in section 6 above. It also demonstrated that
+   platform-provided "spending limits" are a family of features
+   with different semantics per host — Fly's alerts-and-caps
+   model is not what HuggingFace or Render provide.
+
+Documenting so that future projects budget for all three stages
+rather than treating "deploy it" as a single step, and so that
+resume/interview conversation about this project can be
+specific about what each stage taught rather than glossing all
+three as "I deployed it."
+
+For the immediate future: if v2's face-on camera view lands, and
+usage grows enough to justify horizontal scale, the natural
+progression is Fly.io single-machine → Fly.io + Redis (section 6
+above) → potentially a real hosting platform like Modal or
+Google Cloud Run if the pipeline needs GPU acceleration for
+larger models.

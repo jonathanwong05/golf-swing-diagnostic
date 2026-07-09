@@ -1,0 +1,17 @@
+app = 'golf-swing-diagnostic'
+primary_region = 'ewr'  
+
+[build]
+
+[http_service]
+  internal_port = 7860
+  force_https = true
+  auto_stop_machines = 'off'     # was 'stop' — now stays running
+  auto_start_machines = true
+  min_machines_running = 1       # was 0 — always at least one live
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1

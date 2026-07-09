@@ -25,8 +25,9 @@ Most golf swing analysis tools either give you a generic score (Swing Sensei) or
 
 ## Live demo
 
-<!-- TODO: HF Spaces URL once deployed -->
-Coming soon.
+**<https://golf-swing-diagnostic.fly.dev/app>**
+
+Deployed on Fly.io. First visit after an idle stretch may take a few seconds to warm up; analysis itself runs in 60–120 seconds on shared-CPU hardware (vs. ~15 seconds locally on Apple Silicon — the pipeline is CPU-bound in MediaPipe pose extraction).
 
 ## How it works
 
@@ -51,6 +52,10 @@ The LLM is deliberately confined. It receives ranked causes and user data; it mu
 - No user accounts or session history — analyses are stateless
 
 **v2 direction** (roughly ranked by impact): face-on camera view, 120+ fps filming, real P5 mid-downswing detection, ball-position detection, longitudinal tracking, real club tracking. See [`docs/v2_priorities.md`](docs/v2_priorities.md).
+
+## How it's deployed
+
+Docker container running on Fly.io shared-CPU infrastructure. Single always-on VM (the in-memory job store doesn't survive load balancing — see [`docs/v2_priorities.md`](docs/v2_priorities.md) section 6 for the production-grade fix). Total monthly cost including Anthropic API usage sits in the low single dollars.
 
 ## Run it locally
 
