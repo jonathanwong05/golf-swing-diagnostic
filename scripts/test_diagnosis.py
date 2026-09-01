@@ -27,6 +27,9 @@ from golf_diagnostic.diagnosis.matcher import MatchedIndicator, RankedCause
 from golf_diagnostic.diagnosis.output_schema import DiagnosticOutput
 from golf_diagnostic.kb.loader import Cause, KnowledgeBase, load_kb
 
+from dotenv import load_dotenv
+load_dotenv()
+
 
 BAR = "=" * 78
 

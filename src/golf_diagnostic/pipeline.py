@@ -42,6 +42,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from anthropic import Anthropic
 
 from golf_diagnostic.diagnosis.llm_client import generate_diagnosis

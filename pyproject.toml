@@ -20,6 +20,9 @@ dependencies = [
     "pydantic>=2.5,<3",
     "pyyaml>=6.0,<7",
 
+    # --- Environment / config ---
+    "python-dotenv>=1.0,<2",
+
     # --- LLM ---
     "anthropic>=0.34,<1",
 

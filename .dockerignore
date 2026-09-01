@@ -24,4 +24,4 @@ data/
 
 # Local scratch
 scratch/
-notebooks/
+notebooks/.env

@@ -34,6 +34,9 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from anthropic import Anthropic
 from pydantic import ValidationError
 

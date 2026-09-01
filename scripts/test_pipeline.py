@@ -35,6 +35,9 @@ from pathlib import Path
 from golf_diagnostic.kb.loader import load_kb
 from golf_diagnostic.pipeline import analyze_swings
 
+from dotenv import load_dotenv
+load_dotenv()
+
 
 BAR = "=" * 78
 SUB = "-" * 78
